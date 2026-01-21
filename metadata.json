@@ -1,0 +1,7 @@
+{
+  "name": "Logistics Settlement System (Veraka)",
+  "description": "A comprehensive logistics management and settlement dashboard for tracking vehicle operations, client transactions, and profit margins, with dispatch and camera integration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
