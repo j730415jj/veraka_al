@@ -18,9 +18,6 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-// 🔔 알람 소리
-const ALERT_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
@@ -36,46 +33,53 @@ const App: React.FC = () => {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // 👇 오디오 컨텍스트 (MP3 파일 대신 기계음 생성용)
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  // 1. 오디오 준비 및 브라우저 차단 해제
+  // 🔊 기계음(Beep) 발생 함수
+  const beep = () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine'; 
+      osc.frequency.setValueAtTime(880, ctx.currentTime); 
+      
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.5);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+      
+      if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+    } catch (e) {
+      console.error("Audio Error:", e);
+    }
+  };
+
   useEffect(() => {
-    audioRef.current = new Audio(ALERT_SOUND_URL);
-    audioRef.current.load(); // 미리 로드해서 딜레이 방지
-
     const unlockAudio = () => {
-      if(audioRef.current) {
-        audioRef.current.play().then(() => {
-          audioRef.current?.pause();
-          audioRef.current!.currentTime = 0;
-        }).catch(() => {});
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
       }
       document.removeEventListener('click', unlockAudio);
       document.removeEventListener('touchstart', unlockAudio);
     };
-
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
   }, []);
-
-  // 🔔 알람 실행 함수 (소리 + 진동)
-  const playAlertSound = () => {
-    // 1. 소리 재생
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      const playPromise = audioRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.warn("브라우저 정책으로 소리가 차단되었습니다.", error);
-        });
-      }
-    }
-
-    // 2. 진동 울리기 (모바일 전용: 징- 징- 징-)
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([500, 200, 500, 200, 500]); 
-    }
-  };
 
   useEffect(() => {
     const savedUser = localStorage.getItem('veraka_user');
@@ -89,16 +93,24 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // 3. 실시간 데이터 동기화 (⭐⭐⭐ 여기가 수정된 부분입니다 ⭐⭐⭐)
+  // ⭐ 10초마다 데이터 자동 동기화 (안전장치)
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetchData(); 
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // 3. 실시간 데이터 동기화
   useEffect(() => {
     if (!user) return;
     console.log(`📡 [${user.role}] 실시간 채널 연결...`);
 
     const channel = supabase.channel('global-changes')
-      // (A) 배차 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // DB 데이터를 앱 데이터로 변환 (값이 없으면 undefined가 될 수 있음)
           const convertDispatch = (d: any): Partial<Dispatch> => ({
             id: d.id, 
             date: d.date, 
@@ -116,28 +128,25 @@ const App: React.FC = () => {
             const newDispatch = convertDispatch(newD) as Dispatch;
             
             setDispatches(prev => {
-                // 중복 방지: 이미 있는 데이터면 덮어쓰지 않음
                 const exists = prev.find(p => p.id === newDispatch.id);
                 if (exists) return prev;
                 return [newDispatch, ...prev];
             });
             
-            // 기사님 알람
             if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
-              playAlertSound(); 
+              beep(); 
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n\n확인해주세요!`), 300);
             }
+            fetchData();
           } 
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             
-            // 👇 [핵심 수정] 기존 정보를 유지하면서 변경된 것만 덮어쓰기 (차량번호 증발 방지)
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
                     return {
-                        ...d, // 기존 정보(차량번호 등) 꽉 잡고 있기
-                        ...updated, // 새로운 정보 덮어쓰기
-                        // 혹시라도 서버 데이터가 비어서 오면 기존 값 강제 유지
+                        ...d, 
+                        ...updated, 
                         vehicleNo: updated.vehicleNo || d.vehicleNo,
                         clientName: updated.clientName || d.clientName,
                         origin: updated.origin || d.origin,
@@ -149,18 +158,17 @@ const App: React.FC = () => {
                 return d;
             }));
 
-            // 관리자 알람
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-               playAlertSound();
-               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo || '정보없음'}\n송장 등록됨`), 300);
+               beep(); 
+               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo || '차량'}\n송장 등록됨`), 300);
             }
+            fetchData();
           }
           else if (payload.eventType === 'DELETE') {
              setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
           }
       })
-      // (B) 운행기록 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, (payload) => {
           const newOp = payload.new as any;
           const convertOperation = (o: any): Operation => ({
@@ -181,6 +189,7 @@ const App: React.FC = () => {
           } else if (payload.eventType === 'DELETE') {
             setOperations(prev => prev.filter(o => o.id !== payload.old.id));
           }
+          fetchData();
       })
       .subscribe();
 
@@ -205,7 +214,7 @@ const App: React.FC = () => {
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no })));
+      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
@@ -261,13 +270,16 @@ const App: React.FC = () => {
           id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto
       };
       await supabase.from('operations').insert(dbData);
+      fetchData(); // 즉시 재조회
   };
 
   const handleUpdateOperation = async (op: Operation) => {
+      // 👇 [수정됨] 여기서 오타가 있었습니다. op.settlementStatus로 수정 완료!
       const dbData = {
         date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
+      fetchData(); // 즉시 재조회
   };
 
   const handleSaveUnitPrice = async (u: UnitPriceMaster) => {
@@ -287,6 +299,7 @@ const App: React.FC = () => {
   const handleUpdateDispatchStatus = async (id: string, status: 'pending'|'sent'|'completed', photo?: string, manualQuantity?: number) => {
       setDispatches(prev => prev.map(d => d.id === id ? { ...d, status } : d));
       await supabase.from('dispatches').update({ status }).eq('id', id);
+      fetchData(); 
   };
 
   const renderView = () => {
@@ -306,16 +319,19 @@ const App: React.FC = () => {
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 const { error } = await supabase.from('dispatches').insert(dbData);
                 if(error) alert(error.message);
+                fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
                  setDispatches(prev => prev.map(old => old.id === d.id ? d : old));
                  const dbData = { date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 await supabase.from('dispatches').update(dbData).eq('id', d.id);
+                fetchData(); 
             }} 
             onDeleteDispatch={async (id) => { 
                 if(confirm("삭제?")) {
                     setDispatches(prev => prev.filter(d => d.id !== id));
                     await supabase.from('dispatches').delete().eq('id', id); 
+                    fetchData(); 
                 }
             }} 
             onUpdateStatus={handleUpdateDispatchStatus} 
