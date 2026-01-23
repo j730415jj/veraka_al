@@ -4,7 +4,9 @@ import { supabase } from '../supabase';
 
 // 👇 [유지] DB 호환용 UUID 생성 함수
 const generateUUID = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -30,24 +32,44 @@ interface Props {
 }
 
 const DispatchManagementView: React.FC<Props> = ({ 
-  user, dispatches, vehicles, clients, snippets, operations, unitPrices = [],
-  onAddDispatch, onAddSnippet, onAddOperation, onUpdateDispatch, onDeleteDispatch, onUpdateStatus, onNavigate, onUpdateOperation
+  user, 
+  dispatches, 
+  vehicles, 
+  clients, 
+  snippets, 
+  operations,
+  unitPrices = [],
+  onAddDispatch,
+  onAddSnippet,
+  onAddOperation,
+  onUpdateDispatch,
+  onDeleteDispatch,
+  onUpdateStatus,
+  onNavigate,
+  onUpdateOperation
 }) => {
-  const [newDispatch, setNewDispatch] = useState({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
+  // --- 상태 관리 ---
+  const [newDispatch, setNewDispatch] = useState({ 
+    vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' 
+  });
+  
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Dispatch | null>(null);
+  
+  // 자동완성 칩 관련 상태
   const [activeField, setActiveField] = useState<string | null>(null);
 
   // 카메라 및 모달 관련 상태
   const [cameraOpen, setCameraOpen] = useState(false);
-  // 👇 [추가] 카메라 모드인지, 확인/입력 모드인지 구분
-  const [isCameraMode, setIsCameraMode] = useState(false); 
-  
+  // 👇 [추가] 현재 카메라 화면인지, 입력 화면인지 구분하는 상태
+  const [isCameraMode, setIsCameraMode] = useState(false);
+
   const [activeDispatchId, setActiveDispatchId] = useState<string | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [rotation, setRotation] = useState(0); 
   const [zoomScale, setZoomScale] = useState(1);
+  
   const [modalQuantity, setModalQuantity] = useState('');
   const [cardQuantities, setCardQuantities] = useState<Record<string, string>>({});
 
@@ -59,23 +81,35 @@ const DispatchManagementView: React.FC<Props> = ({
   // --- 실시간 위치 추적 ---
   useEffect(() => {
     if (!user || user.role !== 'VEHICLE') return;
+
     const watchId = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        await supabase.from('vehicles').update({ lat: latitude, lng: longitude }).eq('id', user.id);
+        const { error } = await supabase
+          .from('vehicles')
+          .update({ lat: latitude, lng: longitude })
+          .eq('id', user.id);
+
+        if (error) console.error("위치 전송 실패:", error);
       },
-      (error) => console.error("GPS Error:", error),
+      (error) => console.error("GPS 에러:", error),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
     );
+
     return () => navigator.geolocation.clearWatch(watchId);
   }, [user]);
 
-  const uniqueClientNames = useMemo(() => Array.from(new Set(clients.map(c => c.clientName))).sort(), [clients]);
+  // --- 헬퍼 함수들 ---
+  const uniqueClientNames = useMemo(() => {
+    return Array.from(new Set(clients.map(c => c.clientName))).sort();
+  }, [clients]);
 
   const recentData = useMemo(() => {
     const getUniqueRecent = (key: 'origin' | 'destination' | 'item' | 'remarks') => {
-      const combined = [...dispatches.map(d => String(d[key as keyof Dispatch] || '')), ...operations.map(o => String(o[key as keyof Operation] || ''))];
-      return Array.from(new Set(combined.map(v => v.trim()).filter(v => v && v !== 'undefined' && v !== 'null'))).reverse().slice(0, 8);
+      const fromDispatches = dispatches.map(d => String(d[key as keyof Dispatch] || ''));
+      const fromOps = operations.map(o => String(o[key as keyof Operation] || ''));
+      const combined = [...fromDispatches, ...fromOps].map(v => v.trim()).filter(v => v !== '' && v !== 'undefined' && v !== 'null');
+      return Array.from(new Set(combined)).reverse().slice(0, 8);
     };
     return { origin: getUniqueRecent('origin'), destination: getUniqueRecent('destination'), item: getUniqueRecent('item'), remarks: getUniqueRecent('remarks') };
   }, [dispatches, operations]);
@@ -95,7 +129,13 @@ const DispatchManagementView: React.FC<Props> = ({
   };
 
   const applySnippet = (s: Snippet) => {
-    setNewDispatch(prev => ({ ...prev, origin: s.origin||'', destination: s.destination||'', item: s.item||'', clientName: s.clientName||prev.clientName }));
+    setNewDispatch(prev => ({ 
+        ...prev, 
+        origin: s.origin || '', 
+        destination: s.destination || '', 
+        item: s.item || '', 
+        clientName: s.clientName || prev.clientName 
+    }));
     setActiveField(null);
   };
 
@@ -105,61 +145,121 @@ const DispatchManagementView: React.FC<Props> = ({
     setActiveField(null);
   };
 
+  // --- 배차 생성 로직 ---
   const handleCreateDispatch = () => {
-    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) { alert('필수항목 누락'); return; }
-    const d: Dispatch = { id: generateUUID(), date: new Date().toISOString().split('T')[0], vehicleNo: newDispatch.vehicleNo, clientName: newDispatch.clientName || '미지정', origin: newDispatch.origin, destination: newDispatch.destination, item: newDispatch.item, count: newDispatch.count, remarks: newDispatch.remarks, status: 'pending' };
+    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) {
+      alert('차량, 상차지, 하차지는 필수 입력 사항입니다.');
+      return;
+    }
+    
+    const d: Dispatch = { 
+      id: generateUUID(), 
+      date: new Date().toISOString().split('T')[0], 
+      vehicleNo: newDispatch.vehicleNo, 
+      clientName: newDispatch.clientName || '미지정', 
+      origin: newDispatch.origin, 
+      destination: newDispatch.destination, 
+      item: newDispatch.item, 
+      count: newDispatch.count, 
+      remarks: newDispatch.remarks, 
+      status: 'pending' 
+    };
+    
     onAddDispatch(d);
-    onAddSnippet({ id: generateUUID(), title: `${d.origin} ▶ ${d.destination}`, content: d.item||'자동', keyword: d.origin, origin: d.origin, destination: d.destination, item: d.item, clientName: d.clientName });
+
+    const newSnippet: Snippet = {
+      id: generateUUID(),
+      title: `${d.origin} ▶ ${d.destination}`,
+      content: d.item || '자동생성',
+      keyword: d.origin,
+      origin: d.origin,
+      destination: d.destination,
+      item: d.item,
+      clientName: d.clientName
+    };
+    onAddSnippet(newSnippet);
+    
     setNewDispatch({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
     setActiveField(null);
+    
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
   };
 
   const startEditing = (d: Dispatch) => { setEditingId(d.id); setEditForm({ ...d }); };
+  
   const userDispatches = dispatches.filter(d => user.role === 'ADMIN' || d.vehicleNo === user.identifier || (user.role === 'PARTNER' && d.clientName === user.identifier));
 
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
-    const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword?.includes(newDispatch.origin)) || (s.origin?.includes(newDispatch.origin))) : [];
+    const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) : [];
+    
     const show = (newDispatch[field as keyof typeof newDispatch] || activeField === field) && (items.length > 0 || matchingSnippets.length > 0);
+    
     if (!show) return null;
+    
     return (
       <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-wrap gap-1 w-full max-h-40 overflow-y-auto">
-        {field === 'origin' && matchingSnippets.map(s => <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold hover:bg-blue-700">⭐ {s.keyword || s.title}</button>)}
-        {items.map((item, idx) => <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold hover:bg-slate-200">{item}</button>)}
+        {field === 'origin' && matchingSnippets.map(s => <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold hover:bg-blue-700 transition shadow-sm">⭐ {s.keyword || s.title}</button>)}
+        {items.map((item, idx) => <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold hover:bg-slate-200 transition border border-slate-200 dark:border-slate-600">{item}</button>)}
       </div>
     );
   };
 
   const closeCameraModal = () => {
-    setCameraOpen(false); 
-    setIsCameraMode(false); // 모드 초기화
-    setCapturedPhoto(null); 
-    setModalQuantity(''); 
-    setRotation(0); 
-    setZoomScale(1); 
+    setCameraOpen(false);
+    setIsCameraMode(false); // 초기화
+    setCapturedPhoto(null);
+    setModalQuantity('');
+    setRotation(0);
+    setZoomScale(1);
     setActiveDispatchId(null);
-    if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
   };
 
   const handleFinalSubmit = async () => {
     if (!activeDispatchId) return;
     setIsProcessingAI(true);
+
     try {
       const quantity = modalQuantity ? parseFloat(modalQuantity) : 0;
       const targetDispatch = dispatches.find(d => d.id === activeDispatchId);
-      if (!targetDispatch) throw new Error("정보 없음");
+      
+      if (!targetDispatch) throw new Error("배차 정보를 찾을 수 없습니다.");
 
+      // 1. 배차 상태 'completed'로 변경
       await onUpdateStatus(activeDispatchId, 'completed', capturedPhoto || undefined, quantity);
+      
+      // 2. 운행기록(Operations) 자동 등록 또는 수정
+      const existingOp = operations.find(o => 
+          o.vehicleNo === targetDispatch.vehicleNo && 
+          o.date === targetDispatch.date && 
+          o.origin === targetDispatch.origin &&
+          o.destination === targetDispatch.destination
+      );
 
-      const existingOp = operations.find(o => o.vehicleNo === targetDispatch.vehicleNo && o.date === targetDispatch.date && o.origin === targetDispatch.origin && o.destination === targetDispatch.destination);
-      const matchedPrice = unitPrices?.find(up => up.clientName === targetDispatch.clientName && up.origin === targetDispatch.origin && up.destination === targetDispatch.destination && up.item === targetDispatch.item);
+      const matchedPrice = unitPrices?.find(up => 
+        up.clientName.trim() === targetDispatch.clientName.trim() &&
+        up.origin.trim() === targetDispatch.origin.trim() &&
+        up.destination.trim() === targetDispatch.destination.trim() &&
+        up.item.trim() === targetDispatch.item.trim()
+      );
+
       const unitPrice = matchedPrice ? matchedPrice.unitPrice : 0;
-      const supply = Math.floor(unitPrice * quantity);
-      const tax = Math.floor(supply * 0.1); 
-      const totalAmount = supply + tax;
+      const clientUnitPrice = matchedPrice ? matchedPrice.clientUnitPrice : 0;
+      const supplyPrice = Math.floor(unitPrice * quantity);
+      const tax = Math.floor(supplyPrice * 0.1); 
+      const totalAmount = supplyPrice + tax;
 
       const opData: Operation = {
-        id: existingOp ? existingOp.id : generateUUID(),
+        id: existingOp ? existingOp.id : generateUUID(), 
         date: targetDispatch.date,
         clientName: targetDispatch.clientName,
         vehicleNo: targetDispatch.vehicleNo,
@@ -168,8 +268,8 @@ const DispatchManagementView: React.FC<Props> = ({
         item: targetDispatch.item,
         quantity: quantity,
         unitPrice: unitPrice,
-        clientUnitPrice: matchedPrice ? matchedPrice.clientUnitPrice : 0,
-        supplyPrice: supply,
+        clientUnitPrice: clientUnitPrice,
+        supplyPrice: supplyPrice,
         tax: tax,
         totalAmount: totalAmount,
         remarks: targetDispatch.remarks || '',
@@ -177,38 +277,58 @@ const DispatchManagementView: React.FC<Props> = ({
         isInvoiceIssued: existingOp ? existingOp.isInvoiceIssued : false,
         settlementStatus: existingOp ? existingOp.settlementStatus : 'PENDING',
         itemDescription: targetDispatch.item,
-        branchName: matchedPrice?.branchName || '', itemCode: '', isVatIncluded: false
+        branchName: matchedPrice?.branchName || '', 
+        itemCode: '',
+        isVatIncluded: false
       };
 
-      if (existingOp && onUpdateOperation) onUpdateOperation(opData);
-      else onAddOperation(opData);
+      if (existingOp && onUpdateOperation) {
+         onUpdateOperation(opData);
+      } else {
+         onAddOperation(opData);
+      }
 
       closeCameraModal();
-    } catch (error) { console.error(error); alert("오류 발생"); } 
-    finally { setIsProcessingAI(false); }
+
+    } catch (error) {
+      console.error("배차 처리 중 오류 발생:", error);
+      alert("처리 중 오류가 발생했습니다.");
+    } finally {
+      setIsProcessingAI(false);
+    }
   };
 
   return (
     <div ref={scrollContainerRef} className="h-full overflow-y-auto custom-scrollbar p-4 space-y-4 flex flex-col">
       {/* 📁 파일 선택 핸들러 */}
-      <input type="file" ref={fileInputRef} onChange={(e) => { 
-          const f = e.target.files?.[0]; 
-          if(f){ 
-              const r=new FileReader(); 
-              r.onloadend=()=>{
-                  setCapturedPhoto(r.result as string); 
-                  setCameraOpen(true); 
-                  setIsCameraMode(false); // 👇 [수정] 앨범 로드 시 카메라는 끄고 입력창 보여주기
-                  if(activeDispatchId && cardQuantities[activeDispatchId]) setModalQuantity(cardQuantities[activeDispatchId]);
-              }; 
-              r.readAsDataURL(f);
-          } 
-      }} accept="image/*" className="hidden" />
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => { 
+              setCapturedPhoto(reader.result as string); 
+              setCameraOpen(true); 
+              setIsCameraMode(false); // 👇 [수정] 앨범 선택 시, 카메라는 끄고 입력창 바로 보여주기
+              if (activeDispatchId && cardQuantities[activeDispatchId]) {
+                setModalQuantity(cardQuantities[activeDispatchId]);
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        }} 
+        accept="image/*" 
+        className="hidden" 
+      />
 
       {/* 헤더 */}
       <div className="flex justify-between items-center shrink-0">
         <div><h2 className="text-xl font-black text-slate-800 dark:text-slate-100">배차 관리</h2></div>
-        {(user.role === 'VEHICLE' || user.role === 'PARTNER') && onNavigate && <button onClick={() => onNavigate(ViewType.DASHBOARD)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold">🏠 홈</button>}
+        {(user.role === 'VEHICLE' || user.role === 'PARTNER') && onNavigate && (
+          <button onClick={() => onNavigate(ViewType.DASHBOARD)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-600 active:scale-95 transition shadow-sm"><span>🏠 홈으로</span></button>
+        )}
       </div>
 
       {/* 관리자 입력 폼 */}
@@ -218,7 +338,6 @@ const DispatchManagementView: React.FC<Props> = ({
             <div className="flex-1 grid grid-cols-2 lg:grid-cols-7 gap-2 w-full relative">
                 <select value={newDispatch.vehicleNo} onChange={e => setNewDispatch(p => ({ ...p, vehicleNo: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 bg-slate-50"><option value="">차량</option>{vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo}</option>)}</select>
                 <select value={newDispatch.clientName} onChange={e => setNewDispatch(p => ({ ...p, clientName: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 text-blue-600 bg-slate-50"><option value="">거래처</option>{uniqueClientNames.map(n => <option key={n} value={n}>{n}</option>)}</select>
-                
                 <div className="col-span-1 relative group"><input placeholder="상차" value={newDispatch.origin} onChange={e => handleOriginChange(e.target.value)} onFocus={() => setActiveField('origin')} onClick={() => setActiveField('origin')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('origin')}</div>
                 <div className="col-span-1 relative group"><input placeholder="하차" value={newDispatch.destination} onChange={e => setNewDispatch(p => ({ ...p, destination: e.target.value }))} onFocus={() => setActiveField('destination')} onClick={() => setActiveField('destination')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('destination')}</div>
                 <div className="col-span-1 relative group"><input placeholder="품명" value={newDispatch.item} onChange={e => setNewDispatch(p => ({ ...p, item: e.target.value }))} onFocus={() => setActiveField('item')} onClick={() => setActiveField('item')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('item')}</div>
@@ -230,22 +349,12 @@ const DispatchManagementView: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 뷰 분기 */}
+      {/* 뷰 분기: 관리자(Table) vs 기사님(Card) */}
       {user.role === 'ADMIN' ? (
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto min-h-[300px]">
           <table className="w-full min-w-[900px] text-xs text-left text-slate-600 dark:text-slate-300">
             <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 font-bold uppercase border-b sticky top-0">
-              <tr>
-                <th className="px-3 py-2 w-16 text-center">상태</th>
-                <th className="px-3 py-2 w-24">날짜</th>
-                <th className="px-3 py-2 w-28">차량</th>
-                <th className="px-3 py-2 w-32">거래처</th>
-                <th className="px-3 py-2">구간</th>
-                <th className="px-3 py-2 w-24">품명</th>
-                <th className="px-3 py-2 w-14 text-center">회전</th>
-                <th className="px-3 py-2 w-32">비고</th>
-                <th className="px-3 py-2 w-36 text-center">관리</th>
-              </tr>
+              <tr><th className="px-3 py-2 w-16 text-center">상태</th><th className="px-3 py-2 w-24">날짜</th><th className="px-3 py-2 w-28">차량</th><th className="px-3 py-2 w-32">거래처</th><th className="px-3 py-2">구간</th><th className="px-3 py-2 w-24">품명</th><th className="px-3 py-2 w-14 text-center">회전</th><th className="px-3 py-2 w-32">비고</th><th className="px-3 py-2 w-36 text-center">관리</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {userDispatches.map(d => {
@@ -284,22 +393,19 @@ const DispatchManagementView: React.FC<Props> = ({
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border"><span className="text-xs font-bold text-slate-500">실중량:</span><input type="number" inputMode="decimal" value={cardQuantities[d.id] || ''} onChange={(e) => setCardQuantities(p => ({ ...p, [d.id]: e.target.value }))} className="flex-1 bg-transparent text-right font-black text-lg text-blue-600 outline-none" placeholder="0.00" /><span className="text-xs font-bold text-slate-500">ton</span></div>
                                 <div className="grid grid-cols-2 gap-2">
+                                    {/* 👇 [수정] 직접 촬영 버튼 -> 카메라 모드 ON */}
                                     <button onClick={() => { setActiveDispatchId(d.id); setCameraOpen(true); setIsCameraMode(true); setCapturedPhoto(null); setModalQuantity(cardQuantities[d.id]||''); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{alert('카메라X');setCameraOpen(false);} }} className="bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-sm border border-blue-100">📷 촬영</button>
+                                    
+                                    {/* 👇 [수정] 앨범 버튼 -> 카메라 모드 OFF (입력창 바로 뜸) */}
                                     <button onClick={() => { setActiveDispatchId(d.id); fileInputRef.current?.click(); }} className="bg-slate-50 text-slate-600 py-2.5 rounded-xl font-bold text-sm border border-slate-200">📁 앨범</button>
                                 </div>
                                 <button onClick={() => { if(!cardQuantities[d.id]&&!confirm('무게0?')) return; handleFinalSubmit(); }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold text-sm">완료 전송</button>
                             </div>
                         )}
-                        {/* 👇 [수정] 수정 버튼 클릭 시 -> 바로 카메라가 아니라, 입력/전송 창이 뜨도록 변경 */}
+                        
+                        {/* 👇 [수정] 완료 후 수정 버튼 -> 카메라 모드 OFF (입력창 바로 뜸) */}
                         {d.status === 'completed' && (
-                            <button onClick={() => { 
-                                setActiveDispatchId(d.id); 
-                                setModalQuantity(cardQuantities[d.id] || ''); 
-                                setCameraOpen(true); 
-                                setIsCameraMode(false); // 카메라는 끄고 입력창부터 보여줌
-                            }} className="w-full bg-white border border-green-500 text-green-600 py-2.5 rounded-xl font-bold text-sm hover:bg-green-50">
-                                🔄 송장/수량 수정하기
-                            </button>
+                            <button onClick={() => { setActiveDispatchId(d.id); setModalQuantity(cardQuantities[d.id] || ''); setCameraOpen(true); setIsCameraMode(false); }} className="w-full bg-white border border-green-500 text-green-600 py-2.5 rounded-xl font-bold text-sm hover:bg-green-50">🔄 수정</button>
                         )}
                     </div>
                 </div>
@@ -310,42 +416,31 @@ const DispatchManagementView: React.FC<Props> = ({
       {/* 모달 (카메라/입력 공용) */}
       {cameraOpen && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
-           {/* 헤더 */}
            <div className="p-4 flex justify-between items-center text-white"><button onClick={closeCameraModal} className="text-lg font-bold">취소</button><span className="font-bold">송장/수량 입력</span><div className="w-10"></div></div>
            
-           {/* 1. 카메라 모드일 때: 영상 보여줌 */}
+           {/* 1. 카메라 모드일 때만 영상 보여줌 */}
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                    <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg')); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
                </div>
            ) : (
-               /* 2. 확인/입력 모드 (앨범 불러오기, 촬영 후, 수정 버튼 클릭 시) */
+               /* 2. 확인/입력 모드 (앨범, 수정, 촬영 후) */
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
                    {capturedPhoto ? (
                        <img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />
                    ) : (
-                       <div className="text-white text-center p-4">
-                           <p className="text-lg font-bold mb-2">등록된 사진 없음</p>
-                           <p className="text-sm text-gray-400">수량만 수정하거나, 아래 버튼으로 사진을 추가하세요.</p>
-                       </div>
+                       <div className="text-white text-center p-4"><p className="text-lg font-bold mb-2">사진 없음</p><p className="text-sm text-gray-400">수량만 수정하거나 사진을 추가하세요.</p></div>
                    )}
-                   {/* 사진 있을 때 회전/확대 버튼 */}
-                   {capturedPhoto && (
-                        <div className="absolute top-4 right-4 flex flex-col gap-2">
-                            <button onClick={() => setRotation(r => r + 90)} className="w-10 h-10 bg-black/50 text-white rounded-full">↻</button>
-                            <button onClick={() => setZoomScale(z => z === 1 ? 2 : 1)} className="w-10 h-10 bg-black/50 text-white rounded-full">🔍</button>
-                        </div>
-                   )}
+                   {capturedPhoto && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => setRotation(r => r + 90)} className="w-10 h-10 bg-black/50 text-white rounded-full">↻</button><button onClick={() => setZoomScale(z => z === 1 ? 2 : 1)} className="w-10 h-10 bg-black/50 text-white rounded-full">🔍</button></div>}
                </div>
            )}
 
-           {/* 하단 입력/전송 컨트롤 (카메라 모드 아닐 때만 표시) */}
+           {/* 👇 [수정] 카메라 모드가 아닐 때만 하단 입력창 보여줌 (전송 버튼 포함) */}
            {!isCameraMode && (
                <div className="bg-white p-5 space-y-4 rounded-t-3xl pb-10">
                    <div className="flex items-center gap-3"><label className="font-bold">실중량:</label><input type="number" inputMode="decimal" autoFocus value={modalQuantity} onChange={e => setModalQuantity(e.target.value)} className="flex-1 border-b-2 border-blue-500 p-2 text-2xl font-black text-blue-600 text-center outline-none" placeholder="0.00" /><span className="font-bold">ton</span></div>
                    <div className="flex gap-2">
-                       {/* 재촬영 버튼을 누르면 다시 카메라 모드로 진입 */}
                        <button onClick={() => { setIsCameraMode(true); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{} }} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">📸 재촬영</button>
                        <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">📁 앨범</button>
                    </div>
