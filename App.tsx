@@ -18,6 +18,7 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
+// 🔔 알람 소리
 const ALERT_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
 
 const App: React.FC = () => {
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
+  // 데이터 상태 관리
   const [operations, setOperations] = useState<Operation[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -36,9 +38,11 @@ const App: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 1. 오디오 준비 및 브라우저 차단 해제
+  // 1. 오디오 준비 및 브라우저 차단 해제 (수정됨: 진동 준비 포함)
   useEffect(() => {
     audioRef.current = new Audio(ALERT_SOUND_URL);
+    audioRef.current.load(); // 미리 로드해서 딜레이 방지
+
     const unlockAudio = () => {
       if(audioRef.current) {
         audioRef.current.play().then(() => {
@@ -49,14 +53,28 @@ const App: React.FC = () => {
       document.removeEventListener('click', unlockAudio);
       document.removeEventListener('touchstart', unlockAudio);
     };
+
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
   }, []);
 
+  // 🔔 [수정됨] 강력한 알람 실행 함수 (소리 + 진동)
   const playAlertSound = () => {
+    // 1. 소리 재생 시도
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.warn("소리 재생 실패:", e));
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.warn("브라우저 정책으로 소리가 차단되었습니다 (사용자 터치 필요)", error);
+        });
+      }
+    }
+
+    // 2. 진동 울리기 (모바일 전용: 0.5초 진동 -> 0.2초 쉼 -> 0.5초 진동)
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        // 진동 패턴: [진동시간, 쉬는시간, 진동시간...]
+        navigator.vibrate([500, 200, 500, 200, 500]); 
     }
   };
 
@@ -72,14 +90,14 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // 3. 실시간 데이터 동기화 (사진 문제 해결 핵심)
+  // 3. 실시간 데이터 동기화
   useEffect(() => {
     if (!user) return;
     console.log(`📡 [${user.role}] 실시간 채널 연결...`);
 
     const channel = supabase.channel('global-changes')
+      // (A) 배차 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
-          // DB(snake_case) -> App(camelCase) 변환
           const newD = payload.new as any;
           const convertDispatch = (d: any): Dispatch => ({
             id: d.id, date: d.date, clientName: d.client_name, vehicleNo: d.vehicle_no,
@@ -91,28 +109,32 @@ const App: React.FC = () => {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
             
-            // 기사님 알람
+            // 👇 [기사님 알람] 조건: 역할이 기사님이고, 내 차량 번호일 때
             if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
-              playAlertSound();
-              setTimeout(() => alert(`🔔 [새 배차]\n${newDispatch.origin} ▶ ${newDispatch.destination}`), 200);
+              playAlertSound(); // 소리 + 진동 실행
+              // 모바일 환경을 위해 alert 띄우기 (약간 딜레이 줘서 소리 먼저 나게 함)
+              setTimeout(() => {
+                  alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n\n확인해주세요!`);
+              }, 300);
             }
           } 
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             const oldStatus = (payload.old as any).status;
+
             setDispatches(prev => prev.map(d => d.id === updated.id ? updated : d));
 
-            // 관리자 알람
+            // [관리자 알람] 완료 시
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound();
-               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 200);
+               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 300);
             }
           }
           else if (payload.eventType === 'DELETE') {
              setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
           }
       })
-      // 👇 [사진 문제 해결] 운행기록 실시간 감지 시 데이터 매핑 철저히
+      // (B) 운행기록 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, (payload) => {
           const newOp = payload.new as any;
           const convertOperation = (o: any): Operation => ({
@@ -123,7 +145,7 @@ const App: React.FC = () => {
              settlementStatus: o.settlement_status, branchName: o.branch_name,
              clientUnitPrice: o.client_unit_price, itemDescription: o.item_description,
              isInvoiceIssued: o.is_invoice_issued, 
-             invoicePhoto: o.invoice_photo // DB 컬럼(invoice_photo)을 앱 속성(invoicePhoto)에 연결
+             invoicePhoto: o.invoice_photo
           });
 
           if (payload.eventType === 'INSERT') {
@@ -153,7 +175,6 @@ const App: React.FC = () => {
 
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
-      // 👇 [사진 문제 해결] 초기 로드 시에도 매핑
       if (o.data) setOperations(o.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo })));
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
@@ -256,7 +277,7 @@ const App: React.FC = () => {
             user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
-                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicle_no, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 const { error } = await supabase.from('dispatches').insert(dbData);
                 if(error) alert(error.message);
             }} 
