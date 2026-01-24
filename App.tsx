@@ -18,6 +18,9 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
+// 🔔 [수정됨] 끊김 없는 확실한 알람음 (외부 URL 사용)
+const ALERT_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
@@ -33,53 +36,60 @@ const App: React.FC = () => {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
-  // 👇 오디오 컨텍스트 (MP3 파일 대신 기계음 생성용)
-  const audioContextRef = useRef<AudioContext | null>(null);
+  // 👇 [수정됨] HTML5 Audio 객체 사용 (가장 안정적임)
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 🔊 기계음(Beep) 발생 함수
-  const beep = () => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine'; 
-      osc.frequency.setValueAtTime(880, ctx.currentTime); 
-      
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.5);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      osc.stop(ctx.currentTime + 0.5);
-      
-      if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
-    } catch (e) {
-      console.error("Audio Error:", e);
-    }
-  };
-
+  // 1. 초기화: 소리 로딩 및 '터치 시 잠금 해제' (핵심!)
   useEffect(() => {
+    // 오디오 객체 생성 및 로드
+    audioRef.current = new Audio(ALERT_SOUND_URL);
+    audioRef.current.load();
+
+    // 사용자가 화면을 터치하는 순간, 소리를 0.1초 '무음'으로 재생해서 브라우저 보안을 뚫음
     const unlockAudio = () => {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if(audioRef.current) {
+        const originalVolume = audioRef.current.volume;
+        audioRef.current.volume = 0; // 소리 안 나게
+        audioRef.current.play().then(() => {
+            // 재생 성공하면 바로 멈추고 볼륨 복구 -> 이제부터 언제든 소리 재생 가능
+            setTimeout(() => {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                    audioRef.current.volume = 1.0;
+                }
+            }, 100);
+        }).catch((e) => console.log("오디오 권한 획득 실패 (재시도 예정):", e));
       }
-      if (audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume();
-      }
+      // 이벤트 리스너 제거
       document.removeEventListener('click', unlockAudio);
       document.removeEventListener('touchstart', unlockAudio);
     };
+
     document.addEventListener('click', unlockAudio);
     document.addEventListener('touchstart', unlockAudio);
   }, []);
+
+  // 🔊 [수정됨] 확실한 소리 재생 함수
+  const playBeep = () => {
+    try {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.warn("브라우저가 소리를 막았습니다. 화면을 터치해주세요.", error);
+          });
+        }
+      }
+      // 진동 (모바일)
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([500, 200, 500, 200, 500]); 
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     const savedUser = localStorage.getItem('veraka_user');
@@ -93,12 +103,12 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // ⭐ 10초마다 데이터 자동 동기화 (안전장치)
+  // ⭐ 10초마다 데이터 자동 동기화 (배차 누락/완료 미표시 방지)
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
       fetchData(); 
-    }, 10000);
+    }, 10000); // 10초
 
     return () => clearInterval(interval);
   }, [user]);
@@ -109,8 +119,10 @@ const App: React.FC = () => {
     console.log(`📡 [${user.role}] 실시간 채널 연결...`);
 
     const channel = supabase.channel('global-changes')
+      // (A) 배차 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
+          // DB 데이터를 앱 데이터로 변환 (값이 없으면 undefined가 될 수 있음)
           const convertDispatch = (d: any): Partial<Dispatch> => ({
             id: d.id, 
             date: d.date, 
@@ -133,8 +145,9 @@ const App: React.FC = () => {
                 return [newDispatch, ...prev];
             });
             
+            // 👇 [기사님 알람]
             if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
-              beep(); 
+              playBeep(); // 소리+진동
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n\n확인해주세요!`), 300);
             }
             fetchData();
@@ -142,6 +155,7 @@ const App: React.FC = () => {
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             
+            // 👇 [기존 유지] 데이터 증발 방지 로직
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
                     return {
@@ -158,9 +172,10 @@ const App: React.FC = () => {
                 return d;
             }));
 
+            // 👇 [관리자 알람] 완료 시
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-               beep(); 
+               playBeep(); // 소리+진동
                setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo || '차량'}\n송장 등록됨`), 300);
             }
             fetchData();
@@ -169,6 +184,7 @@ const App: React.FC = () => {
              setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
           }
       })
+      // (B) 운행기록 테이블 감시
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, (payload) => {
           const newOp = payload.new as any;
           const convertOperation = (o: any): Operation => ({
@@ -267,16 +283,15 @@ const App: React.FC = () => {
 
   const handleAddOperation = async (op: Operation) => {
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo
       };
       await supabase.from('operations').insert(dbData);
       fetchData(); // 즉시 재조회
   };
 
   const handleUpdateOperation = async (op: Operation) => {
-      // 👇 [수정됨] 여기서 오타가 있었습니다. op.settlementStatus로 수정 완료!
       const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
+        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
       fetchData(); // 즉시 재조회
