@@ -1,14 +1,23 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Operation, Vehicle, Dispatch } from '../types';
 
 interface Props {
   operations: Operation[];
   vehicles: Vehicle[];
   dispatches: Dispatch[];
+  // 👇 [추가됨] 품목 수정을 위해 상위 컴포넌트(App.tsx)에서 전달받을 함수
+  onUpdateOperation?: (op: Operation) => void; 
 }
 
-const DashboardView: React.FC<Props> = ({ operations, vehicles, dispatches }) => {
+const DashboardView: React.FC<Props> = ({ operations, vehicles, dispatches, onUpdateOperation }) => {
   const currentMonth = new Date().toISOString().slice(0, 7);
+
+  // 👇 [추가됨] 일괄 공유를 위한 체크박스 선택 상태
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
+  // 👇 [추가됨] 품목 수정 모드 상태 (어떤 행을 수정 중인지, 입력값은 뭔지)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editItemValue, setEditItemValue] = useState<string>('');
 
   // 1. 통계 계산 (기존 로직 100% 유지)
   const stats = useMemo(() => {
@@ -39,26 +48,70 @@ const DashboardView: React.FC<Props> = ({ operations, vehicles, dispatches }) =>
     };
   }, [operations, vehicles, currentMonth]);
 
-  // 2. 👇 [수정됨] 사진 복사 기능 (공유 대신 복사)
+  // 2. 사진 복사 기능 (기존 유지)
   const handleCopyPhoto = async (photoUrl: string) => {
     try {
-      // 1. 이미지 데이터 가져오기
       const response = await fetch(photoUrl);
       const blob = await response.blob();
-
-      // 2. 클립보드에 쓰기 (복사)
       const item = new ClipboardItem({ [blob.type]: blob });
       await navigator.clipboard.write([item]);
-
-      // 3. 성공 알림
       alert("✅ 사진이 복사되었습니다!\n\n카카오톡 채팅방 입력창을 꾹 누르고 [붙여넣기] 하세요.");
     } catch (error) {
       console.error("복사 실패:", error);
-      // 복사 지원 안하는 브라우저일 경우 다운로드/새창 유도
       if (confirm("이 브라우저는 사진 복사를 지원하지 않습니다.\n사진을 직접 확인하시겠습니까?")) {
         window.open(photoUrl, '_blank');
       }
     }
+  };
+
+  // 👇 [추가됨] 일괄 공유 기능 (Web Share API - 파일 공유)
+  const handleBulkShare = async () => {
+    if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
+    
+    // 선택된 것 중 사진이 있는 것만 골라냄
+    const selectedOps = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
+    
+    if (selectedOps.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
+
+    try {
+      // 사진들을 파일 객체로 변환
+      const filesArray: File[] = [];
+      for (const op of selectedOps) {
+        const response = await fetch(op.invoicePhoto!);
+        const blob = await response.blob();
+        // 파일명: 날짜_차량_ID.jpg
+        const file = new File([blob], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: 'image/jpeg' });
+        filesArray.push(file);
+      }
+
+      // 모바일 공유 창 띄우기
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
+        await navigator.share({
+          files: filesArray,
+          title: '송장 일괄 공유',
+          text: `${selectedOps.length}건의 송장 사진입니다.`
+        });
+      } else {
+        alert("이 브라우저는 일괄 파일 공유를 지원하지 않습니다.\n하나씩 복사해서 보내주세요.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("공유 중 오류가 발생했습니다. (취소됨)");
+    }
+  };
+
+  // 👇 [추가됨] 품목 수정 저장 함수
+  const saveEditItem = (op: Operation) => {
+      if (onUpdateOperation) {
+          // 기존 데이터 + 변경된 품목명으로 업데이트 요청
+          onUpdateOperation({ ...op, item: editItemValue });
+      }
+      setEditingId(null); // 수정 모드 종료
+  };
+
+  // 👇 [추가됨] 체크박스 토글 함수
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   return (
@@ -82,7 +135,7 @@ const DashboardView: React.FC<Props> = ({ operations, vehicles, dispatches }) =>
         </div>
       </div>
 
-      {/* 통계 카드 4개 (매출, 지출, 순이익, 미입금) */}
+      {/* 통계 카드 4개 (기존 유지) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-900 p-6 rounded-[2rem] shadow-xl shadow-blue-100 dark:shadow-none text-white group hover:scale-[1.02] transition-transform">
           <div className="flex justify-between items-start mb-4">
@@ -142,60 +195,112 @@ const DashboardView: React.FC<Props> = ({ operations, vehicles, dispatches }) =>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-12">
-        {/* 최근 운행 내역 (사진 복사 기능 적용) */}
+        {/* 👇 [수정됨] 최근 운행 내역 (체크박스 + 품목 수정 + 일괄 공유) */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">
           <div className="flex justify-between items-center mb-6">
             <h4 className="font-black text-slate-800 dark:text-slate-100 flex items-center">
               <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
               최근 운행 내역
             </h4>
+            {/* 👇 [추가됨] 일괄 공유 버튼 (선택된 게 있을 때만 보임) */}
+            {selectedIds.length > 0 && (
+                <button 
+                    onClick={handleBulkShare} 
+                    className="bg-green-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:bg-green-600 transition animate-pulse flex items-center gap-1"
+                >
+                    <span>📤 {selectedIds.length}개 일괄 공유</span>
+                </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest border-b border-slate-50 dark:border-slate-800">
                 <tr>
+                  {/* 👇 [추가됨] 체크박스 헤더 */}
+                  <th className="pb-3 w-8 text-center">✓</th>
                   <th className="pb-3">날짜</th>
                   <th className="pb-3">차량</th>
                   <th className="pb-3">거래처</th>
+                  {/* 👇 [수정됨] 품명 컬럼 추가 (기존엔 없었음) */}
+                  <th className="pb-3">품명</th>
                   <th className="pb-3 text-right">금액</th>
                   <th className="pb-3 text-center">상태</th>
                   <th className="pb-3 text-center">송장</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                {operations.slice(0, 6).map(op => (
-                  <tr key={op.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="py-4 text-slate-500 dark:text-slate-500 text-xs">{op.date.slice(5)}</td>
-                    <td className="py-4 font-bold text-slate-700 dark:text-slate-300">{op.vehicleNo.slice(-4)}</td>
-                    <td className="py-4 font-bold text-blue-600 dark:text-blue-400">{op.clientName}</td>
-                    <td className="py-4 text-right font-black text-slate-700 dark:text-slate-200">₩{op.totalAmount.toLocaleString()}</td>
-                    <td className="py-4 text-center">
-                      <div className={`inline-block w-2 h-2 rounded-full ${
-                        op.settlementStatus === 'PAID' ? 'bg-green-500' : 
-                        op.settlementStatus === 'INVOICED' ? 'bg-blue-500' : 'bg-orange-500'
-                      }`}></div>
-                    </td>
-                    {/* 👇 [수정됨] 공유 버튼 -> 사진복사 버튼 */}
-                    <td className="py-4 text-center">
-                      {op.invoicePhoto ? (
-                        <button 
-                          onClick={() => handleCopyPhoto(op.invoicePhoto!)}
-                          className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-1 rounded font-bold hover:bg-indigo-200 transition shadow-sm text-[10px] inline-flex items-center gap-1"
-                        >
-                          📋 사진복사
-                        </button>
-                      ) : (
-                        <span className="text-slate-300 text-[10px]">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {operations.slice(0, 10).map(op => { // 6개 -> 10개로 늘려서 보여줌
+                  const isEditing = editingId === op.id;
+                  return (
+                    <tr key={op.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* 👇 [추가됨] 개별 체크박스 */}
+                        <td className="py-4 text-center">
+                            <input 
+                                type="checkbox" 
+                                checked={selectedIds.includes(op.id)} 
+                                onChange={() => toggleSelection(op.id)} 
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                        </td>
+                        <td className="py-4 text-slate-500 dark:text-slate-500 text-xs">{op.date.slice(5)}</td>
+                        <td className="py-4 font-bold text-slate-700 dark:text-slate-300">{op.vehicleNo.slice(-4)}</td>
+                        <td className="py-4 font-bold text-blue-600 dark:text-blue-400">{op.clientName}</td>
+                        
+                        {/* 👇 [수정됨] 품목 수정 기능 적용 */}
+                        <td className="py-4 text-slate-600 dark:text-slate-400 font-medium">
+                            {isEditing ? (
+                                <div className="flex gap-1 items-center">
+                                    <input 
+                                        value={editItemValue} 
+                                        onChange={(e) => setEditItemValue(e.target.value)} 
+                                        className="w-24 border rounded px-1 py-0.5 text-xs bg-white dark:bg-slate-800 dark:border-slate-600"
+                                        autoFocus
+                                    />
+                                    <button onClick={() => saveEditItem(op)} className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] hover:bg-blue-600">OK</button>
+                                </div>
+                            ) : (
+                                <span 
+                                    onClick={() => { 
+                                        if(!onUpdateOperation) return; // 수정 권한 없으면 클릭 안됨
+                                        setEditingId(op.id); 
+                                        setEditItemValue(op.item || ''); 
+                                    }} 
+                                    className="cursor-pointer hover:text-blue-500 border-b border-transparent hover:border-blue-500 transition-colors"
+                                    title="클릭하여 품목 수정"
+                                >
+                                    {op.item || '-'}
+                                </span>
+                            )}
+                        </td>
+
+                        <td className="py-4 text-right font-black text-slate-700 dark:text-slate-200">₩{op.totalAmount.toLocaleString()}</td>
+                        <td className="py-4 text-center">
+                            <div className={`inline-block w-2 h-2 rounded-full ${
+                                op.settlementStatus === 'PAID' ? 'bg-green-500' : 
+                                op.settlementStatus === 'INVOICED' ? 'bg-blue-500' : 'bg-orange-500'
+                            }`}></div>
+                        </td>
+                        <td className="py-4 text-center">
+                            {op.invoicePhoto ? (
+                                <button 
+                                    onClick={() => handleCopyPhoto(op.invoicePhoto!)}
+                                    className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-2 py-1 rounded font-bold hover:bg-indigo-200 transition shadow-sm text-[10px] inline-flex items-center gap-1"
+                                >
+                                    📋 복사
+                                </button>
+                            ) : (
+                                <span className="text-slate-300 text-[10px]">-</span>
+                            )}
+                        </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* 차량 가동 현황 (유지) */}
+        {/* 차량 가동 현황 (기존 유지) */}
         <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col transition-colors">
           <h4 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center">
             <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>

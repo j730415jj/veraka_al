@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AuthUser, Dispatch, Vehicle, Client, Snippet, Operation, ViewType, UnitPriceMaster } from '../types';
 import { supabase } from '../supabase';
 
-// 👇 [유지] DB 호환용 UUID 생성 함수
+// DB 호환용 UUID 생성 함수
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -61,7 +61,6 @@ const DispatchManagementView: React.FC<Props> = ({
 
   // 카메라 및 모달 관련 상태
   const [cameraOpen, setCameraOpen] = useState(false);
-  // 👇 [추가] 현재 카메라 화면인지, 입력 화면인지 구분하는 상태
   const [isCameraMode, setIsCameraMode] = useState(false);
 
   const [activeDispatchId, setActiveDispatchId] = useState<string | null>(null);
@@ -193,6 +192,7 @@ const DispatchManagementView: React.FC<Props> = ({
   
   const userDispatches = dispatches.filter(d => user.role === 'ADMIN' || d.vehicleNo === user.identifier || (user.role === 'PARTNER' && d.clientName === user.identifier));
 
+  // 👇 [수정됨] 여기가 핵심입니다. 가로(flex-wrap) -> 세로(flex-col) 변경
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
     const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) : [];
@@ -202,16 +202,16 @@ const DispatchManagementView: React.FC<Props> = ({
     if (!show) return null;
     
     return (
-      <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-wrap gap-1 w-full max-h-40 overflow-y-auto">
-        {field === 'origin' && matchingSnippets.map(s => <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold hover:bg-blue-700 transition shadow-sm">⭐ {s.keyword || s.title}</button>)}
-        {items.map((item, idx) => <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold hover:bg-slate-200 transition border border-slate-200 dark:border-slate-600">{item}</button>)}
+      <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto">
+        {field === 'origin' && matchingSnippets.map(s => <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">⭐ {s.keyword || s.title}</button>)}
+        {items.map((item, idx) => <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100">{item}</button>)}
       </div>
     );
   };
 
   const closeCameraModal = () => {
     setCameraOpen(false);
-    setIsCameraMode(false); // 초기화
+    setIsCameraMode(false); 
     setCapturedPhoto(null);
     setModalQuantity('');
     setRotation(0);
@@ -311,7 +311,7 @@ const DispatchManagementView: React.FC<Props> = ({
             reader.onloadend = () => { 
               setCapturedPhoto(reader.result as string); 
               setCameraOpen(true); 
-              setIsCameraMode(false); // 👇 [수정] 앨범 선택 시, 카메라는 끄고 입력창 바로 보여주기
+              setIsCameraMode(false); 
               if (activeDispatchId && cardQuantities[activeDispatchId]) {
                 setModalQuantity(cardQuantities[activeDispatchId]);
               }
@@ -393,17 +393,14 @@ const DispatchManagementView: React.FC<Props> = ({
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border"><span className="text-xs font-bold text-slate-500">실중량:</span><input type="number" inputMode="decimal" value={cardQuantities[d.id] || ''} onChange={(e) => setCardQuantities(p => ({ ...p, [d.id]: e.target.value }))} className="flex-1 bg-transparent text-right font-black text-lg text-blue-600 outline-none" placeholder="0.00" /><span className="text-xs font-bold text-slate-500">ton</span></div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {/* 👇 [수정] 직접 촬영 버튼 -> 카메라 모드 ON */}
                                     <button onClick={() => { setActiveDispatchId(d.id); setCameraOpen(true); setIsCameraMode(true); setCapturedPhoto(null); setModalQuantity(cardQuantities[d.id]||''); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{alert('카메라X');setCameraOpen(false);} }} className="bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-sm border border-blue-100">📷 촬영</button>
                                     
-                                    {/* 👇 [수정] 앨범 버튼 -> 카메라 모드 OFF (입력창 바로 뜸) */}
                                     <button onClick={() => { setActiveDispatchId(d.id); fileInputRef.current?.click(); }} className="bg-slate-50 text-slate-600 py-2.5 rounded-xl font-bold text-sm border border-slate-200">📁 앨범</button>
                                 </div>
                                 <button onClick={() => { if(!cardQuantities[d.id]&&!confirm('무게0?')) return; handleFinalSubmit(); }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold text-sm">완료 전송</button>
                             </div>
                         )}
                         
-                        {/* 👇 [수정] 완료 후 수정 버튼 -> 카메라 모드 OFF (입력창 바로 뜸) */}
                         {d.status === 'completed' && (
                             <button onClick={() => { setActiveDispatchId(d.id); setModalQuantity(cardQuantities[d.id] || ''); setCameraOpen(true); setIsCameraMode(false); }} className="w-full bg-white border border-green-500 text-green-600 py-2.5 rounded-xl font-bold text-sm hover:bg-green-50">🔄 수정</button>
                         )}
@@ -418,14 +415,12 @@ const DispatchManagementView: React.FC<Props> = ({
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
            <div className="p-4 flex justify-between items-center text-white"><button onClick={closeCameraModal} className="text-lg font-bold">취소</button><span className="font-bold">송장/수량 입력</span><div className="w-10"></div></div>
            
-           {/* 1. 카메라 모드일 때만 영상 보여줌 */}
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                    <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg')); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
                </div>
            ) : (
-               /* 2. 확인/입력 모드 (앨범, 수정, 촬영 후) */
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
                    {capturedPhoto ? (
                        <img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />
@@ -436,7 +431,6 @@ const DispatchManagementView: React.FC<Props> = ({
                </div>
            )}
 
-           {/* 👇 [수정] 카메라 모드가 아닐 때만 하단 입력창 보여줌 (전송 버튼 포함) */}
            {!isCameraMode && (
                <div className="bg-white p-5 space-y-4 rounded-t-3xl pb-10">
                    <div className="flex items-center gap-3"><label className="font-bold">실중량:</label><input type="number" inputMode="decimal" autoFocus value={modalQuantity} onChange={e => setModalQuantity(e.target.value)} className="flex-1 border-b-2 border-blue-500 p-2 text-2xl font-black text-blue-600 text-center outline-none" placeholder="0.00" /><span className="font-bold">ton</span></div>
