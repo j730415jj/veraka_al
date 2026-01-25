@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
-// Define column widths for the spreadsheet table to ensure horizontal scrolling and alignment
+// 테이블 컬럼 너비 설정 (체크박스 열 추가됨)
 const colWidths = {
-  check: 'w-[40px]', // 체크박스용 열 추가
+  check: 'w-[40px]', 
   date: 'w-[80px]',
   vehicle: 'w-[100px]',
   client: 'w-[120px]',
@@ -55,10 +55,10 @@ const OperationEntryView: React.FC<Props> = ({
   const [filterRemarks, setFilterRemarks] = useState('');
   const [editTarget, setEditTarget] = useState<Operation | null>(null);
   
-  // 👇 [추가됨] 체크박스 선택 상태
+  // 👇 [추가됨] 일괄 공유를 위한 체크박스 선택 상태
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Viewer States
+  // 뷰어 관련 상태
   const [viewingOp, setViewingOp] = useState<Operation | null>(null);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -84,10 +84,8 @@ const OperationEntryView: React.FC<Props> = ({
     isInvoiceIssued: false
   });
 
-  // 거래처 이름 목록
   const clientNames = useMemo(() => clients.map(c => c.clientName).sort(), [clients]);
 
-  // 선택된 거래처의 지점 목록 가져오기
   const availableBranchesForNew = useMemo(() => {
     const client = clients.find(c => c.clientName === newEntry.clientName);
     return client?.branches || [];
@@ -254,17 +252,18 @@ const OperationEntryView: React.FC<Props> = ({
     }
   };
 
-  // 👇 [추가됨] 일괄 공유 로직
+  // 👇 [추가됨] 일괄 공유 기능 (여러 개 선택해서 카톡 전송)
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
     
+    // 사진이 있는 항목만 골라내기
     const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
 
     try {
       const filesArray: File[] = [];
       for (const op of targets) {
-        // Base64를 File 객체로 변환
+        // Base64 이미지를 파일 객체로 변환
         const arr = op.invoicePhoto!.split(',');
         const mime = arr[0].match(/:(.*?);/)?.[1];
         const bstr = atob(arr[1]);
@@ -272,10 +271,12 @@ const OperationEntryView: React.FC<Props> = ({
         const u8arr = new Uint8Array(n);
         while(n--){ u8arr[n] = bstr.charCodeAt(n); }
         
+        // 파일명: 날짜_차량_ID.jpg
         const file = new File([u8arr], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: mime });
         filesArray.push(file);
       }
 
+      // 모바일 공유 시트 열기 (카톡 선택 가능)
       if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
         await navigator.share({
           files: filesArray,
@@ -283,15 +284,15 @@ const OperationEntryView: React.FC<Props> = ({
           text: `${targets.length}건의 송장 사진입니다.`
         });
       } else {
-        alert("이 브라우저는 일괄 공유를 지원하지 않습니다. 하나씩 공유해주세요.");
+        alert("이 브라우저는 일괄 파일 공유를 지원하지 않습니다.\n하나씩 공유해 주세요.");
       }
     } catch (e) {
       console.error(e);
-      alert("공유 중 오류가 발생했습니다. (취소됨)");
+      // 취소했을 때는 조용히 넘어가기
     }
   };
 
-  // 👇 [추가됨] 체크박스 토글 함수
+  // 👇 [추가됨] 체크박스 선택/해제 로직
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -354,7 +355,7 @@ const OperationEntryView: React.FC<Props> = ({
           <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[1850px]">
             <thead className="bg-[#445164] dark:bg-slate-800 text-white sticky top-0 z-30">
               <tr className="divide-x divide-slate-500 dark:divide-slate-700 text-center">
-                {/* 👇 [추가됨] 체크박스 헤더 */}
+                {/* 👇 [추가됨] 전체 선택 체크박스 (필요 시 로직 추가 가능, 현재는 헤더만 표시) */}
                 <th className={`${colWidths.check} px-2 py-3`}>✓</th>
                 <th className={`${colWidths.date} px-2 py-3`}>일자</th>
                 <th className={`${colWidths.vehicle} px-2 py-3`}>차량번호</th>
@@ -377,6 +378,7 @@ const OperationEntryView: React.FC<Props> = ({
             </thead>
             
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {/* 입력 행 (기존 유지) */}
               <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
                 <td className="p-1 text-center font-bold text-slate-400">-</td>
                 <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
@@ -410,6 +412,7 @@ const OperationEntryView: React.FC<Props> = ({
                 <td className="p-1 text-center"><button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white w-full py-1.5 rounded text-xs font-black shadow-md">등록</button></td>
               </tr>
 
+              {/* 데이터 목록 */}
               {filteredOperations.map((op) => {
                 const isEditing = editTarget?.id === op.id;
                 const displaySupply = isPartner ? Math.round(op.clientUnitPrice * op.quantity) : op.supplyPrice;
@@ -461,7 +464,7 @@ const OperationEntryView: React.FC<Props> = ({
                                 type="checkbox" 
                                 checked={selectedIds.includes(op.id)} 
                                 onChange={() => toggleSelection(op.id)} 
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4"
                             />
                         </td>
                         <td className="px-2 py-2.5 text-center text-slate-500 dark:text-slate-400">{op.date.slice(5)}</td>
@@ -503,7 +506,7 @@ const OperationEntryView: React.FC<Props> = ({
           </table>
         </div>
         
-        {/* 👇 [추가됨] 하단 일괄 공유 버튼 (선택된 항목 있을 때만 노출) */}
+        {/* 👇 [추가됨] 하단 일괄 공유 버튼 (선택된 항목 있을 때만 둥둥 떠있음) */}
         {selectedIds.length > 0 && (
             <div className="absolute bottom-6 right-6 z-50 animate-bounce">
                 <button 
