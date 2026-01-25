@@ -37,22 +37,18 @@ const App: React.FC = () => {
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<any>(null); // 화면 꺼짐 방지용
+  const wakeLockRef = useRef<any>(null); // 화면 꺼짐 방지
 
   // 1. 오디오 & 시스템 알림 & 화면 꺼짐 방지 초기화
   useEffect(() => {
-    // (1) 오디오 준비
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
 
-    // (2) 시스템 알림 권한 요청
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
 
-    // (3) 화면 터치 시 잠금 해제 + 화면 켜짐 유지(Wake Lock)
     const unlockAudioAndScreen = async () => {
-      // 오디오 잠금 해제
       if(audioRef.current) {
         audioRef.current.volume = 0; 
         audioRef.current.play().then(() => {
@@ -62,14 +58,13 @@ const App: React.FC = () => {
         }).catch(() => {});
       }
 
-      // ⭐ 화면 꺼짐 방지 (Wake Lock API)
       try {
         if ('wakeLock' in navigator) {
             wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
             console.log("💡 화면이 켜진 상태로 유지됩니다.");
         }
       } catch (err) {
-        console.log("화면 유지 실패(배터리 절약 모드 등):", err);
+        console.log("화면 유지 실패:", err);
       }
 
       document.removeEventListener('click', unlockAudioAndScreen);
@@ -79,7 +74,6 @@ const App: React.FC = () => {
     document.addEventListener('click', unlockAudioAndScreen);
     document.addEventListener('touchstart', unlockAudioAndScreen);
 
-    // 탭 다시 돌아왔을 때 화면 유지 재요청
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible' && 'wakeLock' in navigator) {
             try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch {}
@@ -88,21 +82,17 @@ const App: React.FC = () => {
 
   }, []);
 
-  // 🔔 강력한 알람 실행 (소리 + 진동 + 시스템알림)
   const playAlertSound = (title: string, body: string) => {
     try {
-      // 1. 소리 재생
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(e => console.warn(e));
       }
-      // 2. 진동
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([500, 200, 500, 200, 500]); 
       }
-      // 3. 시스템 상단 알림 (앱이 백그라운드여도 뜸)
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, { body, icon: '/vite.svg' }); // 아이콘은 기본값
+        new Notification(title, { body, icon: '/vite.svg' });
       }
     } catch (e) { console.error(e); }
   };
@@ -126,13 +116,14 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
-  // 3. 실시간 감지
+  // 3. 실시간 감지 (여기가 수정됨: 차량번호 보호 로직 추가)
   useEffect(() => {
     if (!user) return;
     
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
+          // DB 데이터를 앱 데이터로 변환 (값이 없으면 undefined가 될 수 있음)
           const convertDispatch = (d: any): Partial<Dispatch> => ({
             id: d.id, date: d.date, clientName: d.client_name, vehicleNo: d.vehicle_no,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
@@ -141,11 +132,14 @@ const App: React.FC = () => {
 
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD) as Dispatch;
+            
             setDispatches(prev => {
-                if (prev.find(p => p.id === newDispatch.id)) return prev;
+                const exists = prev.find(p => p.id === newDispatch.id);
+                if (exists) return prev; // 이미 있으면 무시 (중복 방지)
                 return [newDispatch, ...prev];
             });
-            // 👇 기사님 알람
+            
+            // 기사님 알람
             if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
               playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
@@ -154,10 +148,17 @@ const App: React.FC = () => {
           } 
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
+            
+            // 👇 [수정됨] 업데이트 시 차량번호 증발 방지 (기존 데이터 우선 보호)
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
-                    return { ...d, ...updated, 
-                        vehicleNo: updated.vehicleNo || d.vehicleNo,
+                    // 새 데이터에 차량번호가 있으면 쓰고, 없으면 기존꺼(d.vehicleNo)를 꽉 잡고 놓지 않음!
+                    const safeVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
+                    
+                    return { 
+                        ...d, 
+                        ...updated, // 덮어쓰되...
+                        vehicleNo: safeVehicleNo, // 차량번호는 안전하게 보호된 값으로 다시 덮어씀
                         clientName: updated.clientName || d.clientName,
                         origin: updated.origin || d.origin,
                         destination: updated.destination || d.destination,
@@ -168,7 +169,7 @@ const App: React.FC = () => {
                 return d;
             }));
 
-            // 👇 관리자 알람
+            // 관리자 알람
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo || ''} / 송장 등록됨`);
@@ -304,7 +305,9 @@ const App: React.FC = () => {
             user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
-                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicle_no, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                // 차량번호가 비어있지 않은지 한번 더 확인 후 DB 전송
+                if (!d.vehicleNo) { alert('차량번호 누락!'); return; }
+                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
             }} 
