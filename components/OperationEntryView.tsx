@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
-// 테이블 컬럼 설정 (전송완료 추가 및 너비 조정)
+// 테이블 컬럼 설정
 const colWidths = {
   check: 'w-[40px]', 
   date: 'w-[80px]',
@@ -17,9 +17,9 @@ const colWidths = {
   supply: 'w-[110px]',
   tax: 'w-[100px]',
   total: 'w-[120px]',
-  photo: 'w-[90px]', // 사진+체크박스 공간
-  trans: 'w-[70px]', // 전송완료(NEW)
-  invoice: 'w-[70px]', // 송장상태
+  photo: 'w-[90px]',
+  trans: 'w-[70px]', 
+  invoice: 'w-[70px]',
   remarks: 'w-[200px]',
   manage: 'w-[100px]',
 };
@@ -173,12 +173,10 @@ const OperationEntryView: React.FC<Props> = ({
 
   const handleInlineUpdate = () => { if (editTarget) { onUpdateOperation(editTarget); setEditTarget(null); } };
 
-  // 🚀 반응 속도 개선된 토글 (App.tsx와 연동됨)
   const toggleInvoice = (op: Operation) => {
     onUpdateOperation({ ...op, isInvoiceIssued: !op.isInvoiceIssued });
   };
 
-  // 🚀 전송 완료 수동 체크 기능 (녹색 버튼)
   const toggleSettlement = (op: Operation) => {
     const newStatus = op.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED';
     onUpdateOperation({ ...op, settlementStatus: newStatus });
@@ -219,9 +217,9 @@ const OperationEntryView: React.FC<Props> = ({
     link.click();
   };
 
+  // 1개 공유 (단일)
   const handleShare = async (op: Operation) => {
     if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
-    const text = `${op.date} 운행건: ${op.origin} -> ${op.destination} (${op.item})`;
     if (navigator.share) {
       try {
         const arr = op.invoicePhoto.split(',');
@@ -231,15 +229,19 @@ const OperationEntryView: React.FC<Props> = ({
         const u8arr = new Uint8Array(n);
         while (n--) { u8arr[n] = bstr.charCodeAt(n); }
         const file = new File([u8arr], `invoice_${op.id}.jpg`, { type: mime });
-        await navigator.share({ title: `[베라카] 송장`, text, files: [file] });
+        
+        // 👇 텍스트 없이 파일만 보냄 (카톡 호환성 최적화)
+        await navigator.share({ files: [file] });
       } catch (err) { }
     } else {
-      navigator.clipboard.writeText(text).then(() => alert('송장 정보가 복사되었습니다.'));
+      alert("이 브라우저는 공유 기능을 지원하지 않습니다.");
     }
   };
 
+  // 👇 [수정됨] 일괄 공유 (카톡 호환성 최적화)
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
+    
     const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
 
@@ -257,21 +259,23 @@ const OperationEntryView: React.FC<Props> = ({
       }
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
+        // 👇 [핵심] title, text 다 빼고 오직 파일만 보냄 (카톡에서 파일 전송으로 인식하게 함)
         await navigator.share({
-          files: filesArray,
-          title: '송장 일괄 공유',
-          text: `${targets.length}건의 송장 사진입니다.`
+          files: filesArray
         });
-        // 🚀 공유 성공 시 자동 체크 (즉시 반영됨)
+        
+        // 전송 완료 체크
         targets.forEach(op => {
             onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
         });
-        alert("공유 완료! '전송완료' 처리되었습니다.");
         setSelectedIds([]); 
       } else {
-        alert("이 브라우저는 일괄 공유를 지원하지 않습니다.");
+        alert("이 기기에서는 일괄 공유를 지원하지 않습니다.\n하나씩 공유해 주세요.");
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e);
+        // 취소하거나 에러나면 아무것도 안 함 (사용자 혼란 방지)
+    }
   };
 
   const toggleSelection = (id: string) => {
@@ -324,6 +328,7 @@ const OperationEntryView: React.FC<Props> = ({
         </div>
         <div className="flex justify-end items-center">
           <div className="flex space-x-2">
+            {/* 👇 공유 버튼 (왼쪽) */}
             <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1">
                <span>📤</span> 
                <span>공유 ({selectedIds.length})</span>
@@ -361,6 +366,7 @@ const OperationEntryView: React.FC<Props> = ({
             </thead>
             
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {/* 입력 행 */}
               <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
                 <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
                 <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center font-bold" /></td>
@@ -429,8 +435,9 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="p-2 text-right font-black text-blue-600">{displayTotal.toLocaleString()}</td>
                         
                         <td className="p-1 text-center">{op.invoicePhoto ? <img src={op.invoicePhoto} className="w-8 h-8 rounded border mx-auto" /> : <span className="text-slate-300">없음</span>}</td>
-                        <td className="p-1 text-center"><button disabled className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${isShared ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>✔</button></td>
-                        
+                        <td className="p-1 text-center">
+                           <button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, settlementStatus: editTarget!.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED'}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.settlementStatus === 'SHARED' ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>✔</button>
+                        </td>
                         <td className="p-1 text-center">
                            <button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, isInvoiceIssued: !editTarget!.isInvoiceIssued}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button>
                         </td>
@@ -456,7 +463,6 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displayTax.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-black text-rose-600 dark:text-rose-400">{displayTotal.toLocaleString()}</td>
                         
-                        {/* 👇 [수정됨] 사진 + 체크박스 오른쪽 칼정렬 */}
                         <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-between w-full px-1">
                             {op.invoicePhoto ? (
@@ -472,12 +478,12 @@ const OperationEntryView: React.FC<Props> = ({
                           </div>
                         </td>
 
-                        {/* 👇 [수정됨] 전송완료 (녹색 버튼, 수동 체크 가능) */}
+                        {/* 전송완료 (녹색 버튼) */}
                         <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleSettlement(op); }}>
                            <button className={`w-6 h-6 rounded border transition-colors ${isShared ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
                         </td>
 
-                        {/* 👇 [기존] 송장상태 (녹색 버튼) */}
+                        {/* 송장상태 (녹색 버튼) */}
                         <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleInvoice(op); }}>
                           <button className={`w-6 h-6 rounded border transition-colors ${op.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
                         </td>
@@ -509,7 +515,7 @@ const OperationEntryView: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Photo Viewer Modal (기존 코드 100% 유지) */}
+      {/* Photo Viewer Modal */}
       {viewingOp && (
         <div className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 select-none animate-in fade-in duration-200" onWheel={handleWheel}>
           <div className="w-full max-w-6xl h-[90vh] bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
