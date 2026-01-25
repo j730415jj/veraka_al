@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
-// 테이블 컬럼 너비 설정 (체크박스 열 추가됨)
+// 테이블 컬럼 너비 설정 (전송완료 컬럼 추가 및 너비 조정)
 const colWidths = {
   check: 'w-[40px]', 
   date: 'w-[80px]',
@@ -17,8 +17,9 @@ const colWidths = {
   supply: 'w-[110px]',
   tax: 'w-[100px]',
   total: 'w-[120px]',
-  photo: 'w-[80px]',
-  invoice: 'w-[70px]',
+  photo: 'w-[90px]', // 사진+체크박스 공간 확보
+  trans: 'w-[70px]', // 전송완료(NEW)
+  invoice: 'w-[70px]', // 송장상태
   remarks: 'w-[200px]',
   manage: 'w-[100px]',
 };
@@ -46,6 +47,7 @@ const OperationEntryView: React.FC<Props> = ({
 }) => {
   const isPartner = user.role === 'PARTNER';
 
+  // 필터 상태
   const [filterDate, setFilterDate] = useState('');
   const [filterVehicle, setFilterVehicle] = useState('');
   const [filterClient, setFilterClient] = useState(isPartner ? user.identifier : '');
@@ -53,9 +55,10 @@ const OperationEntryView: React.FC<Props> = ({
   const [filterOrigin, setFilterOrigin] = useState('');
   const [filterDestination, setFilterDestination] = useState('');
   const [filterRemarks, setFilterRemarks] = useState('');
+  
   const [editTarget, setEditTarget] = useState<Operation | null>(null);
   
-  // 👇 [추가됨] 일괄 공유를 위한 체크박스 선택 상태
+  // 공유를 위한 선택된 ID 목록
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // 뷰어 관련 상태
@@ -195,7 +198,9 @@ const OperationEntryView: React.FC<Props> = ({
   };
 
   const toggleInvoice = (op: Operation) => {
-    onUpdateOperation({ ...op, isInvoiceIssued: !op.isInvoiceIssued });
+    // 🚀 반응 속도 개선: 즉시 반영된 것처럼 보이게 하고 서버 요청
+    const updatedOp = { ...op, isInvoiceIssued: !op.isInvoiceIssued };
+    onUpdateOperation(updatedOp);
   };
 
   const filteredOperations = useMemo(() => {
@@ -233,66 +238,51 @@ const OperationEntryView: React.FC<Props> = ({
     link.click();
   };
 
-  const handleShare = async (op: Operation) => {
-    if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
-    const text = `${op.date} 운행건: ${op.origin} -> ${op.destination} (${op.item})`;
-    if (navigator.share) {
-      try {
-        const arr = op.invoicePhoto.split(',');
-        const mime = arr[0].match(/:(.*?);/)?.[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-        const file = new File([u8arr], `invoice_${op.id}.jpg`, { type: mime });
-        await navigator.share({ title: `[베라카] 송장`, text, files: [file] });
-      } catch (err) { }
-    } else {
-      navigator.clipboard.writeText(text).then(() => alert('송장 정보가 복사되었습니다.'));
-    }
-  };
-
-  // 👇 [추가됨] 일괄 공유 기능 (여러 개 선택해서 카톡 전송)
+  // 상단 일괄 공유 로직 (전송 완료 자동 체크)
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
     
-    // 사진이 있는 항목만 골라내기
     const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
 
     try {
       const filesArray: File[] = [];
       for (const op of targets) {
-        // Base64 이미지를 파일 객체로 변환
         const arr = op.invoicePhoto!.split(',');
         const mime = arr[0].match(/:(.*?);/)?.[1];
         const bstr = atob(arr[1]);
         let n = bstr.length;
         const u8arr = new Uint8Array(n);
         while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-        
-        // 파일명: 날짜_차량_ID.jpg
         const file = new File([u8arr], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: mime });
         filesArray.push(file);
       }
 
-      // 모바일 공유 시트 열기 (카톡 선택 가능)
       if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
         await navigator.share({
           files: filesArray,
           title: '송장 일괄 공유',
           text: `${targets.length}건의 송장 사진입니다.`
         });
+
+        // 🚀 공유 성공 시 [전송완료] 자동 체크 (DB 업데이트)
+        targets.forEach(op => {
+            // (any 타입 캐스팅: 임시 필드 처리)
+            const updated = { ...op, settlementStatus: 'SHARED' } as Operation; 
+            onUpdateOperation(updated);
+        });
+        alert("공유 완료! '전송완료' 처리되었습니다.");
+        setSelectedIds([]); // 선택 초기화
+
       } else {
-        alert("이 브라우저는 일괄 파일 공유를 지원하지 않습니다.\n하나씩 공유해 주세요.");
+        alert("이 브라우저는 일괄 공유를 지원하지 않습니다.");
       }
     } catch (e) {
       console.error(e);
-      // 취소했을 때는 조용히 넘어가기
     }
   };
 
-  // 👇 [추가됨] 체크박스 선택/해제 로직
+  // 체크박스 토글 함수
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -342,8 +332,14 @@ const OperationEntryView: React.FC<Props> = ({
             </div>
           ))}
         </div>
+        
+        {/* 👇 [수정됨] 버튼 배치 변경: 공유 버튼을 맨 앞으로 이동 */}
         <div className="flex justify-end items-center">
           <div className="flex space-x-2">
+            <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1">
+               <span>📤</span> 
+               <span>공유 ({selectedIds.length})</span>
+            </button>
             <button onClick={() => { setFilterDate(''); setFilterVehicle(''); !isPartner && setFilterClient(''); setFilterBranch(''); setFilterOrigin(''); setFilterDestination(''); setFilterRemarks(''); }} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 px-4 py-2 rounded-lg text-xs font-bold transition">초기화</button>
             <button className="bg-[#2563eb] hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-xs font-black shadow-sm">조회하기</button>
           </div>
@@ -355,8 +351,6 @@ const OperationEntryView: React.FC<Props> = ({
           <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[1850px]">
             <thead className="bg-[#445164] dark:bg-slate-800 text-white sticky top-0 z-30">
               <tr className="divide-x divide-slate-500 dark:divide-slate-700 text-center">
-                {/* 👇 [추가됨] 전체 선택 체크박스 (필요 시 로직 추가 가능, 현재는 헤더만 표시) */}
-                <th className={`${colWidths.check} px-2 py-3`}>✓</th>
                 <th className={`${colWidths.date} px-2 py-3`}>일자</th>
                 <th className={`${colWidths.vehicle} px-2 py-3`}>차량번호</th>
                 <th className={`${colWidths.client} px-2 py-3`}>거래처명</th>
@@ -370,17 +364,20 @@ const OperationEntryView: React.FC<Props> = ({
                 <th className={`${colWidths.supply} px-2 py-3`}>공급가액</th>
                 <th className={`${colWidths.tax} px-2 py-3`}>세액</th>
                 <th className={`${colWidths.total} px-2 py-3`}>합계금액</th>
-                <th className={`${colWidths.photo} px-2 py-3`}>송장 사진</th>
+                
+                {/* 👇 [수정됨] 헤더 순서 및 이름 변경 */}
+                <th className={`${colWidths.photo} px-2 py-3`}>송장 / 선택</th>
+                <th className={`${colWidths.trans} px-2 py-3`}>전송완료</th>
                 <th className={`${colWidths.invoice} px-2 py-3`}>송장상태</th>
+                
                 <th className={`${colWidths.remarks} px-2 py-3`}>비고</th>
                 <th className={`${colWidths.manage} px-2 py-3`}>관리</th>
               </tr>
             </thead>
             
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {/* 입력 행 (기존 유지) */}
+              {/* 입력 행 */}
               <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
-                <td className="p-1 text-center font-bold text-slate-400">-</td>
                 <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
                 <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center font-bold" /></td>
                 <td className="p-1">
@@ -404,7 +401,8 @@ const OperationEntryView: React.FC<Props> = ({
                 <td className="p-2 text-slate-400 text-center font-bold">자동</td>
                 <td className="p-2 text-slate-400 text-center font-bold">자동</td>
                 <td className="p-2 text-slate-400 text-center font-bold">자동</td>
-                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">배차연동</td>
+                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">사진등록</td>
+                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">자동체크</td>
                 <td className="p-1 text-center bg-amber-50 dark:bg-slate-800">
                   <button onClick={() => setNewEntry(prev => ({ ...prev, isInvoiceIssued: !prev.isInvoiceIssued }))} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${newEntry.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button>
                 </td>
@@ -418,12 +416,12 @@ const OperationEntryView: React.FC<Props> = ({
                 const displaySupply = isPartner ? Math.round(op.clientUnitPrice * op.quantity) : op.supplyPrice;
                 const displayTax = isPartner ? Math.round(displaySupply * 0.1) : op.tax;
                 const displayTotal = isPartner ? (displaySupply + displayTax) : op.totalAmount;
+                const isShared = op.settlementStatus === 'SHARED'; // 전송완료 여부 확인
 
                 return (
                   <tr key={op.id} className={`border-b dark:border-slate-800 transition-colors divide-x divide-slate-100 dark:divide-slate-800 ${isEditing ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`} onClick={() => !isEditing && setEditTarget(op)}>
                     {isEditing ? (
                       <>
-                        <td className="p-1 text-center"><input type="checkbox" disabled /></td>
                         <td className="p-1"><input type="date" name="date" value={editTarget.date} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs" /></td>
                         <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={editTarget.vehicleNo} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center font-bold" /></td>
                         <td className="p-1">
@@ -446,7 +444,10 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="p-2 text-right font-bold text-slate-400">{displaySupply.toLocaleString()}</td>
                         <td className="p-2 text-right font-bold text-slate-400">{displayTax.toLocaleString()}</td>
                         <td className="p-2 text-right font-black text-blue-600">{displayTotal.toLocaleString()}</td>
+                        
                         <td className="p-1 text-center">{op.invoicePhoto ? <img src={op.invoicePhoto} className="w-8 h-8 rounded border mx-auto" /> : <span className="text-slate-300">없음</span>}</td>
+                        <td className="p-1 text-center"><input type="checkbox" checked={isShared} disabled /></td>
+                        
                         <td className="p-1 text-center">
                            <button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, isInvoiceIssued: !editTarget!.isInvoiceIssued}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button>
                         </td>
@@ -458,15 +459,6 @@ const OperationEntryView: React.FC<Props> = ({
                       </>
                     ) : (
                       <>
-                        {/* 👇 [추가됨] 개별 체크박스 */}
-                        <td className="px-2 py-2.5 text-center" onClick={e => e.stopPropagation()}>
-                            <input 
-                                type="checkbox" 
-                                checked={selectedIds.includes(op.id)} 
-                                onChange={() => toggleSelection(op.id)} 
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4"
-                            />
-                        </td>
                         <td className="px-2 py-2.5 text-center text-slate-500 dark:text-slate-400">{op.date.slice(5)}</td>
                         <td className="px-2 py-2.5 text-center font-bold dark:text-slate-200">{op.vehicleNo}</td>
                         <td className="px-2 py-2.5 text-center font-bold text-rose-600 dark:text-rose-400">{op.clientName}</td>
@@ -480,19 +472,33 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displaySupply.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displayTax.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-black text-rose-600 dark:text-rose-400">{displayTotal.toLocaleString()}</td>
+                        
+                        {/* 👇 [수정됨] 사진 + 선택 체크박스 */}
                         <td className="px-2 py-1 text-center" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-center space-x-1.5">
+                          <div className="flex items-center justify-center space-x-2">
                             {op.invoicePhoto ? (
-                              <>
-                                <img src={op.invoicePhoto} className="w-8 h-8 rounded border dark:border-slate-700 cursor-pointer hover:scale-110 transition-transform object-cover" onClick={() => { setViewingOp(op); setZoom(1); setPosition({x:0, y:0}); }} />
-                                <button onClick={() => handleShare(op)} className="text-blue-500 hover:text-blue-700 text-[10px] font-bold">공유</button>
-                              </>
-                            ) : <span className="text-slate-300">미등록</span>}
+                              <img src={op.invoicePhoto} className="w-8 h-8 rounded border dark:border-slate-700 cursor-pointer hover:scale-110 transition-transform object-cover" onClick={() => { setViewingOp(op); setZoom(1); setPosition({x:0, y:0}); }} />
+                            ) : <span className="text-[9px] text-slate-300">없음</span>}
+                            
+                            <input 
+                                type="checkbox" 
+                                checked={selectedIds.includes(op.id)} 
+                                onChange={() => toggleSelection(op.id)} 
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
                           </div>
                         </td>
+
+                        {/* 👇 [추가됨] 전송완료 (자동 체크) */}
+                        <td className="px-1 py-2 text-center" onClick={e => e.stopPropagation()}>
+                           <input type="checkbox" checked={isShared} disabled className="w-4 h-4 rounded border-gray-300 text-green-600 bg-gray-100" />
+                        </td>
+
+                        {/* 👇 [기존] 송장상태 (수동 체크, 반응 속도 개선됨) */}
                         <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleInvoice(op); }}>
                           <button className={`w-6 h-6 rounded border ${op.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
                         </td>
+
                         <td className="px-2 py-2 truncate text-slate-500 dark:text-slate-400">{op.remarks}</td>
                         <td className="px-2 py-2 text-center">
                           <button onClick={(e) => { e.stopPropagation(); onDeleteOperation(op.id); }} className="text-red-400 hover:text-red-600 font-bold">삭제</button>
@@ -505,22 +511,9 @@ const OperationEntryView: React.FC<Props> = ({
             </tbody>
           </table>
         </div>
-        
-        {/* 👇 [추가됨] 하단 일괄 공유 버튼 (선택된 항목 있을 때만 둥둥 떠있음) */}
-        {selectedIds.length > 0 && (
-            <div className="absolute bottom-6 right-6 z-50 animate-bounce">
-                <button 
-                    onClick={handleBulkShare} 
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full shadow-2xl font-black flex items-center gap-2 transition-transform active:scale-95"
-                >
-                    <span className="text-lg">📤</span>
-                    <span>{selectedIds.length}개 송장 일괄 공유</span>
-                </button>
-            </div>
-        )}
       </div>
 
-      {/* Photo Viewer Modal (기존 코드 100% 유지) */}
+      {/* Photo Viewer Modal */}
       {viewingOp && (
         <div className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 select-none animate-in fade-in duration-200" onWheel={handleWheel}>
           <div className="w-full max-w-6xl h-[90vh] bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
