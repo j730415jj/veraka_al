@@ -18,7 +18,6 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-// 🔔 삐- 소리 (내장 코드)
 const BEEP_SOUND = "data:audio/wav;base64,UklGRl9vT1BXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU";
 
 const App: React.FC = () => {
@@ -26,7 +25,6 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
-  // 데이터 상태 관리
   const [operations, setOperations] = useState<Operation[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -39,7 +37,6 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wakeLockRef = useRef<any>(null); 
 
-  // 1. 오디오 & 시스템 알림 & 화면 꺼짐 방지 초기화
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
@@ -57,29 +54,21 @@ const App: React.FC = () => {
             audioRef.current!.volume = 1.0;
         }).catch(() => {});
       }
-
       try {
         if ('wakeLock' in navigator) {
             wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-            console.log("💡 화면이 켜진 상태로 유지됩니다.");
         }
-      } catch (err) {
-        console.log("화면 유지 실패:", err);
-      }
-
+      } catch (err) {}
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
-
     document.addEventListener('click', unlockAudioAndScreen);
     document.addEventListener('touchstart', unlockAudioAndScreen);
-
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible' && 'wakeLock' in navigator) {
             try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch {}
         }
     });
-
   }, []);
 
   const playAlertSound = (title: string, body: string) => {
@@ -109,40 +98,32 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // 2. 자동 동기화
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => fetchData(), 10000);
     return () => clearInterval(interval);
   }, [user]);
 
-  // 3. 실시간 감지
   useEffect(() => {
     if (!user) return;
-    
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // 👇 [수정됨] vehicle_no, vehicleNo 둘 다 체크하여 하나라도 있으면 사용 (안전장치)
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo;
-
           const convertDispatch = (d: any): Partial<Dispatch> => ({
             id: d.id, date: d.date, clientName: d.client_name, 
-            vehicleNo: safeVehicleNo, // 안전한 차량번호 사용
+            vehicleNo: safeVehicleNo,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
             remarks: d.remarks, status: d.status
           });
 
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD) as Dispatch;
-            
             setDispatches(prev => {
                 const exists = prev.find(p => p.id === newDispatch.id);
                 if (exists) return prev;
                 return [newDispatch, ...prev];
             });
-            
-            // 기사님 알람: 문자열로 변환해서 비교 (안전장치)
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
               playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
@@ -151,26 +132,13 @@ const App: React.FC = () => {
           } 
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
-            
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
-                    // 업데이트 시 차량번호 증발 방지 (기존 데이터 우선 보호)
                     const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
-                    
-                    return { 
-                        ...d, 
-                        ...updated, 
-                        vehicleNo: protectedVehicleNo, 
-                        clientName: updated.clientName || d.clientName,
-                        origin: updated.origin || d.origin,
-                        destination: updated.destination || d.destination,
-                        item: updated.item || d.item,
-                        status: updated.status || d.status
-                    } as Dispatch;
+                    return { ...d, ...updated, vehicleNo: protectedVehicleNo, clientName: updated.clientName || d.clientName, origin: updated.origin || d.origin, destination: updated.destination || d.destination, item: updated.item || d.item, status: updated.status || d.status } as Dispatch;
                 }
                 return d;
             }));
-
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo || ''} / 송장 등록됨`);
@@ -186,7 +154,6 @@ const App: React.FC = () => {
           fetchData(); 
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
@@ -205,38 +172,12 @@ const App: React.FC = () => {
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
       if (o.data) setOperations(o.data.map((x:any) => ({ 
-          ...x, 
-          id: x.id, 
-          clientName: x.client_name, 
-          vehicleNo: x.vehicle_no, 
-          unitPrice: x.unit_price, 
-          supplyPrice: x.supply_price, 
-          totalAmount: x.total_amount, 
-          settlementStatus: x.settlement_status, 
-          branchName: x.branch_name, 
-          clientUnitPrice: x.client_unit_price, 
-          itemDescription: x.item_description, 
-          isInvoiceIssued: x.is_invoice_issued, 
-          invoicePhoto: x.invoice_photo
+          ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo
       })));
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      
-      // 👇 [수정됨] 디스패치 불러올 때도 양쪽 이름 다 확인 (2중 체크)
-      if (d.data) setDispatches(d.data.map((x:any) => ({ 
-          ...x, 
-          id: x.id, 
-          clientName: x.client_name, 
-          vehicleNo: x.vehicle_no || x.vehicleNo, // 여기가 핵심! 둘 중 하나라도 있으면 OK
-          origin: x.origin, 
-          destination: x.destination, 
-          item: x.item, 
-          count: x.count, 
-          remarks: x.remarks, 
-          status: x.status 
-      })));
-
+      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no || x.vehicleNo, origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status })));
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
 
@@ -248,7 +189,6 @@ const App: React.FC = () => {
   const handleLogin = (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
     let loggedInUser: AuthUser | null = null;
     let nextView = ViewType.DASHBOARD;
-
     if (type === 'ADMIN') {
       const admin = adminAccounts.find(a => a.username === id && a.password === pw);
       if (admin) { loggedInUser = { id: admin.id, role: 'ADMIN', name: admin.name, identifier: admin.username }; nextView = ViewType.DASHBOARD; }
@@ -259,7 +199,6 @@ const App: React.FC = () => {
       const vehicle = vehicles.find(v => v.loginCode === id && v.password === (pw || id));
       if (vehicle) { loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; nextView = ViewType.DISPATCH_MGMT; }
     }
-
     if (loggedInUser) {
       setUser(loggedInUser);
       setCurrentView(nextView);
@@ -285,21 +224,23 @@ const App: React.FC = () => {
   const handleDeleteClient = async (id: string) => { if(confirm("삭제?")) { await supabase.from('clients').delete().eq('id', id); fetchData(); }};
 
   const handleAddOperation = async (op: Operation) => {
+      setOperations(prev => [op, ...prev]); // 🚀 [즉시반영] 화면부터 추가
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, 
-          invoice_photo: op.invoicePhoto 
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').insert(dbData);
-      fetchData(); 
+      fetchData(); // 백그라운드 동기화
   };
 
   const handleUpdateOperation = async (op: Operation) => {
+      // 🚀 [즉시반영] 화면의 데이터를 먼저 바꿔치기 (기다리지 않음)
+      setOperations(prev => prev.map(o => o.id === op.id ? op : o));
+      
       const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, 
-        invoice_photo: op.invoicePhoto 
+        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
-      fetchData();
+      // fetchData는 굳이 바로 안 해도 됨 (이미 바꿨으니까)
   };
 
   const handleSaveUnitPrice = async (u: UnitPriceMaster) => {
@@ -360,7 +301,11 @@ const App: React.FC = () => {
       case ViewType.OPERATION_ENTRY:
         return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
             onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
-            onDeleteOperation={async (id) => { if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }}} />;
+            onDeleteOperation={async (id) => { 
+                // 🚀 [즉시반영] 화면에서 먼저 삭제
+                setOperations(prev => prev.filter(o => o.id !== id));
+                if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }
+            }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
       case ViewType.VEHICLE_REPORT: return <StatementView title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.COMPANY_REPORT: return <StatementView title="상호별 내역서" type="company" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
