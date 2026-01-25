@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<any>(null); // 화면 꺼짐 방지
+  const wakeLockRef = useRef<any>(null); 
 
   // 1. 오디오 & 시스템 알림 & 화면 꺼짐 방지 초기화
   useEffect(() => {
@@ -123,9 +123,12 @@ const App: React.FC = () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // DB 데이터를 앱 데이터로 변환
+          // 👇 [수정됨] vehicle_no, vehicleNo 둘 다 체크하여 하나라도 있으면 사용 (안전장치)
+          const safeVehicleNo = newD.vehicle_no || newD.vehicleNo;
+
           const convertDispatch = (d: any): Partial<Dispatch> => ({
-            id: d.id, date: d.date, clientName: d.client_name, vehicleNo: d.vehicle_no,
+            id: d.id, date: d.date, clientName: d.client_name, 
+            vehicleNo: safeVehicleNo, // 안전한 차량번호 사용
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
             remarks: d.remarks, status: d.status
           });
@@ -139,7 +142,8 @@ const App: React.FC = () => {
                 return [newDispatch, ...prev];
             });
             
-            if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
+            // 기사님 알람: 문자열로 변환해서 비교 (안전장치)
+            if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
               playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
             }
@@ -150,11 +154,13 @@ const App: React.FC = () => {
             
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
-                    const safeVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
+                    // 업데이트 시 차량번호 증발 방지 (기존 데이터 우선 보호)
+                    const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
+                    
                     return { 
                         ...d, 
                         ...updated, 
-                        vehicleNo: safeVehicleNo, 
+                        vehicleNo: protectedVehicleNo, 
                         clientName: updated.clientName || d.clientName,
                         origin: updated.origin || d.origin,
                         destination: updated.destination || d.destination,
@@ -198,8 +204,6 @@ const App: React.FC = () => {
 
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
-      
-      // 👇 [중요] invoice_photo (DB) -> invoicePhoto (앱) 연결을 확실하게!
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
@@ -213,13 +217,25 @@ const App: React.FC = () => {
           clientUnitPrice: x.client_unit_price, 
           itemDescription: x.item_description, 
           isInvoiceIssued: x.is_invoice_issued, 
-          invoicePhoto: x.invoice_photo // 여기가 핵심입니다
+          invoicePhoto: x.invoice_photo
       })));
-      
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status })));
+      
+      // 👇 [수정됨] 디스패치 불러올 때도 양쪽 이름 다 확인 (2중 체크)
+      if (d.data) setDispatches(d.data.map((x:any) => ({ 
+          ...x, 
+          id: x.id, 
+          clientName: x.client_name, 
+          vehicleNo: x.vehicle_no || x.vehicleNo, // 여기가 핵심! 둘 중 하나라도 있으면 OK
+          origin: x.origin, 
+          destination: x.destination, 
+          item: x.item, 
+          count: x.count, 
+          remarks: x.remarks, 
+          status: x.status 
+      })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
@@ -320,7 +336,7 @@ const App: React.FC = () => {
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
                 if (!d.vehicleNo) { alert('차량번호 누락!'); return; }
-                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicle_no, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
             }} 
@@ -342,7 +358,6 @@ const App: React.FC = () => {
             onUpdateOperation={handleUpdateOperation} 
           />;
       case ViewType.OPERATION_ENTRY:
-        // 👇 이 부분이 스크린샷에 나온 화면입니다.
         return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
             onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
             onDeleteOperation={async (id) => { if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }}} />;
