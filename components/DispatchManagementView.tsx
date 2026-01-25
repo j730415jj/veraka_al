@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AuthUser, Dispatch, Vehicle, Client, Snippet, Operation, ViewType, UnitPriceMaster } from '../types';
 import { supabase } from '../supabase';
 
-// DB 호환용 UUID 생성 함수
+// --------------------------------------------------------------------------
+// UUID 생성 함수 (DB 호환용)
+// --------------------------------------------------------------------------
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -48,20 +50,32 @@ const DispatchManagementView: React.FC<Props> = ({
   onNavigate,
   onUpdateOperation
 }) => {
-  // --- 상태 관리 ---
+  
+  // --------------------------------------------------------------------------
+  // 상태 관리 (State)
+  // --------------------------------------------------------------------------
+  
+  // 신규 배차 입력 폼 상태
   const [newDispatch, setNewDispatch] = useState({ 
-    vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' 
+    vehicleNo: '', 
+    clientName: '', 
+    origin: '', 
+    destination: '', 
+    item: '', 
+    count: 1, 
+    remarks: '' 
   });
   
+  // 수정 모드 상태
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Dispatch | null>(null);
   
-  // 자동완성 칩 관련 상태
+  // 자동완성 칩 활성화 상태
   const [activeField, setActiveField] = useState<string | null>(null);
 
   // 카메라 및 모달 관련 상태
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [isCameraMode, setIsCameraMode] = useState(false);
+  const [isCameraMode, setIsCameraMode] = useState(false); // 카메라 vs 확인창 구분
 
   const [activeDispatchId, setActiveDispatchId] = useState<string | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
@@ -69,15 +83,20 @@ const DispatchManagementView: React.FC<Props> = ({
   const [rotation, setRotation] = useState(0); 
   const [zoomScale, setZoomScale] = useState(1);
   
+  // 수량 입력 상태
   const [modalQuantity, setModalQuantity] = useState('');
   const [cardQuantities, setCardQuantities] = useState<Record<string, string>>({});
 
+  // --------------------------------------------------------------------------
+  // Refs
+  // --------------------------------------------------------------------------
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // --- 실시간 위치 추적 ---
+  // --------------------------------------------------------------------------
+  // 실시간 위치 추적 (기사님용)
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (!user || user.role !== 'VEHICLE') return;
 
@@ -98,24 +117,38 @@ const DispatchManagementView: React.FC<Props> = ({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [user]);
 
-  // --- 헬퍼 함수들 ---
+  // --------------------------------------------------------------------------
+  // 데이터 가공 및 헬퍼 함수
+  // --------------------------------------------------------------------------
   const uniqueClientNames = useMemo(() => {
     return Array.from(new Set(clients.map(c => c.clientName))).sort();
   }, [clients]);
 
+  // 최근 입력 데이터 추출 (자동완성용)
   const recentData = useMemo(() => {
     const getUniqueRecent = (key: 'origin' | 'destination' | 'item' | 'remarks') => {
       const fromDispatches = dispatches.map(d => String(d[key as keyof Dispatch] || ''));
       const fromOps = operations.map(o => String(o[key as keyof Operation] || ''));
-      const combined = [...fromDispatches, ...fromOps].map(v => v.trim()).filter(v => v !== '' && v !== 'undefined' && v !== 'null');
+      const combined = [...fromDispatches, ...fromOps]
+        .map(v => v.trim())
+        .filter(v => v !== '' && v !== 'undefined' && v !== 'null');
+      
       return Array.from(new Set(combined)).reverse().slice(0, 8);
     };
-    return { origin: getUniqueRecent('origin'), destination: getUniqueRecent('destination'), item: getUniqueRecent('item'), remarks: getUniqueRecent('remarks') };
+
+    return { 
+      origin: getUniqueRecent('origin'), 
+      destination: getUniqueRecent('destination'), 
+      item: getUniqueRecent('item'), 
+      remarks: getUniqueRecent('remarks') 
+    };
   }, [dispatches, operations]);
 
+  // 상차지 입력 시 자동완성 처리
   const handleOriginChange = (val: string) => {
     setNewDispatch(prev => ({ ...prev, origin: val }));
     const match = snippets.find(s => s.keyword === val);
+    
     if (match) {
       setNewDispatch(prev => ({
         ...prev,
@@ -144,8 +177,11 @@ const DispatchManagementView: React.FC<Props> = ({
     setActiveField(null);
   };
 
-  // --- 배차 생성 로직 ---
+  // --------------------------------------------------------------------------
+  // 배차 생성 및 수정
+  // --------------------------------------------------------------------------
   const handleCreateDispatch = () => {
+    // 유효성 검사
     if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) {
       alert('차량, 상차지, 하차지는 필수 입력 사항입니다.');
       return;
@@ -166,6 +202,7 @@ const DispatchManagementView: React.FC<Props> = ({
     
     onAddDispatch(d);
 
+    // 자동완성 데이터 학습 (Snippet 추가)
     const newSnippet: Snippet = {
       id: generateUUID(),
       title: `${d.origin} ▶ ${d.destination}`,
@@ -178,9 +215,11 @@ const DispatchManagementView: React.FC<Props> = ({
     };
     onAddSnippet(newSnippet);
     
+    // 입력창 초기화
     setNewDispatch({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
     setActiveField(null);
     
+    // 스크롤 최상단으로 이동
     setTimeout(() => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -188,13 +227,26 @@ const DispatchManagementView: React.FC<Props> = ({
     }, 100);
   };
 
-  const startEditing = (d: Dispatch) => { setEditingId(d.id); setEditForm({ ...d }); };
+  const startEditing = (d: Dispatch) => { 
+    setEditingId(d.id); 
+    setEditForm({ ...d }); 
+  };
   
-  const userDispatches = dispatches.filter(d => user.role === 'ADMIN' || d.vehicleNo === user.identifier || (user.role === 'PARTNER' && d.clientName === user.identifier));
+  // 현재 로그인한 사용자에 맞는 배차 목록 필터링
+  const userDispatches = dispatches.filter(d => 
+    user.role === 'ADMIN' || 
+    d.vehicleNo === user.identifier || 
+    (user.role === 'PARTNER' && d.clientName === user.identifier)
+  );
 
+  // --------------------------------------------------------------------------
+  // 자동완성 칩 렌더링 (세로 정렬 적용됨)
+  // --------------------------------------------------------------------------
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
-    const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) : [];
+    const matchingSnippets = field === 'origin' 
+      ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) 
+      : [];
     
     const show = (newDispatch[field as keyof typeof newDispatch] || activeField === field) && (items.length > 0 || matchingSnippets.length > 0);
     
@@ -202,8 +254,24 @@ const DispatchManagementView: React.FC<Props> = ({
     
     return (
       <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto">
-        {field === 'origin' && matchingSnippets.map(s => <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">⭐ {s.keyword || s.title}</button>)}
-        {items.map((item, idx) => <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100">{item}</button>)}
+        {field === 'origin' && matchingSnippets.map(s => (
+          <button 
+            key={`snip-${s.id}`} 
+            onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} 
+            className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100"
+          >
+            ⭐ {s.keyword || s.title}
+          </button>
+        ))}
+        {items.map((item, idx) => (
+          <button 
+            key={`${String(field)}-${idx}`} 
+            onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} 
+            className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100"
+          >
+            {item}
+          </button>
+        ))}
       </div>
     );
   };
@@ -223,6 +291,9 @@ const DispatchManagementView: React.FC<Props> = ({
     }
   };
 
+  // --------------------------------------------------------------------------
+  // 최종 전송 (사진 + 운행기록 저장)
+  // --------------------------------------------------------------------------
   const handleFinalSubmit = async () => {
     if (!activeDispatchId) return;
     setIsProcessingAI(true);
@@ -233,7 +304,7 @@ const DispatchManagementView: React.FC<Props> = ({
       
       if (!targetDispatch) throw new Error("배차 정보를 찾을 수 없습니다.");
 
-      // 1. 배차 상태 'completed'로 변경
+      // 1. 배차 상태 'completed'로 변경 (사진 URL 포함)
       await onUpdateStatus(activeDispatchId, 'completed', capturedPhoto || undefined, quantity);
       
       // 2. 운행기록(Operations) 자동 등록 또는 수정
@@ -244,6 +315,7 @@ const DispatchManagementView: React.FC<Props> = ({
           o.destination === targetDispatch.destination
       );
 
+      // 단가표 매칭
       const matchedPrice = unitPrices?.find(up => 
         up.clientName.trim() === targetDispatch.clientName.trim() &&
         up.origin.trim() === targetDispatch.origin.trim() &&
@@ -257,6 +329,7 @@ const DispatchManagementView: React.FC<Props> = ({
       const tax = Math.floor(supplyPrice * 0.1); 
       const totalAmount = supplyPrice + tax;
 
+      // 운행기록 객체 생성
       const opData: Operation = {
         id: existingOp ? existingOp.id : generateUUID(), 
         date: targetDispatch.date,
@@ -272,6 +345,7 @@ const DispatchManagementView: React.FC<Props> = ({
         tax: tax,
         totalAmount: totalAmount,
         remarks: targetDispatch.remarks || '',
+        // 사진 데이터 유지 (새 사진이 없으면 기존 사진 유지)
         invoicePhoto: capturedPhoto || (existingOp ? existingOp.invoicePhoto : undefined),
         isInvoiceIssued: existingOp ? existingOp.isInvoiceIssued : false,
         settlementStatus: existingOp ? existingOp.settlementStatus : 'PENDING',
@@ -299,7 +373,7 @@ const DispatchManagementView: React.FC<Props> = ({
 
   return (
     <div ref={scrollContainerRef} className="h-full overflow-y-auto custom-scrollbar p-4 space-y-4 flex flex-col">
-      {/* 📁 파일 선택 핸들러 */}
+      {/* 📁 파일 선택 핸들러 (숨김) */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -330,7 +404,9 @@ const DispatchManagementView: React.FC<Props> = ({
         )}
       </div>
 
-      {/* 관리자 입력 폼 */}
+      {/* -------------------------------------------------------------------------- */}
+      {/* 관리자 입력 폼                                                             */}
+      {/* -------------------------------------------------------------------------- */}
       {user.role === 'ADMIN' && (
         <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-blue-200 dark:border-slate-700 shadow-sm sticky top-0 z-20">
           <div className="flex flex-col lg:flex-row gap-2 items-end">
@@ -348,27 +424,74 @@ const DispatchManagementView: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 뷰 분기: 관리자(Table) vs 기사님(Card) */}
+      {/* -------------------------------------------------------------------------- */}
+      {/* 배차 목록 뷰 (관리자: 테이블 / 기사님: 카드)                                */}
+      {/* -------------------------------------------------------------------------- */}
       {user.role === 'ADMIN' ? (
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto min-h-[300px]">
           <table className="w-full min-w-[900px] text-xs text-left text-slate-600 dark:text-slate-300">
             <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 font-bold uppercase border-b sticky top-0">
-              <tr><th className="px-3 py-2 w-16 text-center">상태</th><th className="px-3 py-2 w-24">날짜</th><th className="px-3 py-2 w-28">차량</th><th className="px-3 py-2 w-32">거래처</th><th className="px-3 py-2">구간</th><th className="px-3 py-2 w-24">품명</th><th className="px-3 py-2 w-14 text-center">회전</th><th className="px-3 py-2 w-32">비고</th><th className="px-3 py-2 w-36 text-center">관리</th></tr>
+              <tr>
+                <th className="px-3 py-2 w-16 text-center">상태</th>
+                <th className="px-3 py-2 w-24">날짜</th>
+                <th className="px-3 py-2 w-28">차량</th>
+                <th className="px-3 py-2 w-32">거래처</th>
+                <th className="px-3 py-2">구간</th>
+                <th className="px-3 py-2 w-24">품명</th>
+                <th className="px-3 py-2 w-14 text-center">회전</th>
+                <th className="px-3 py-2 w-32">비고</th>
+                <th className="px-3 py-2 w-36 text-center">관리</th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {userDispatches.map(d => {
                 const isEditing = editingId === d.id;
                 return (
                   <tr key={d.id} className={`hover:bg-slate-50 ${d.status === 'completed' ? 'bg-green-50/30' : ''}`}>
-                    <td className="px-3 py-2 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.status==='completed'?'bg-green-50 text-green-600 border-green-200':d.status==='sent'?'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-500 border-slate-200'}`}>{d.status==='pending'?'대기':d.status==='sent'?'배차중':'완료'}</span></td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.status==='completed'?'bg-green-50 text-green-600 border-green-200':d.status==='sent'?'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                        {d.status==='pending'?'대기':d.status==='sent'?'배차중':'완료'}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{d.date.substring(5)}</td>
                     <td className="px-3 py-2 font-bold text-blue-600">{d.vehicleNo}</td>
                     <td className="px-3 py-2">{d.clientName}</td>
-                    <td className="px-3 py-2">{isEditing ? <div className="flex gap-1"><input value={editForm?.origin} onChange={e=>setEditForm(p=>p?({...p,origin:e.target.value}):null)} className="border rounded w-20 px-1" /><input value={editForm?.destination} onChange={e=>setEditForm(p=>p?({...p,destination:e.target.value}):null)} className="border rounded w-20 px-1" /></div> : `${d.origin} → ${d.destination}`}</td>
-                    <td className="px-3 py-2">{d.item}</td>
+                    
+                    {/* 상하차지 수정 */}
+                    <td className="px-3 py-2">
+                      {isEditing ? (
+                        <div className="flex gap-1">
+                          <input value={editForm?.origin} onChange={e=>setEditForm(p=>p?({...p,origin:e.target.value}):null)} className="border rounded w-20 px-1" />
+                          <input value={editForm?.destination} onChange={e=>setEditForm(p=>p?({...p,destination:e.target.value}):null)} className="border rounded w-20 px-1" />
+                        </div>
+                      ) : (
+                        `${d.origin} → ${d.destination}`
+                      )}
+                    </td>
+
+                    {/* 👇 [수정됨] 품명(Item)도 수정할 수 있게 변경 */}
+                    <td className="px-3 py-2">
+                      {isEditing ? (
+                        <input value={editForm?.item} onChange={e=>setEditForm(p=>p?({...p,item:e.target.value}):null)} className="border rounded w-20 px-1" />
+                      ) : (
+                        d.item
+                      )}
+                    </td>
+
                     <td className="px-3 py-2 text-center">{d.count}</td>
                     <td className="px-3 py-2 truncate max-w-[100px]" title={d.remarks}>{d.remarks}</td>
-                    <td className="px-3 py-2 text-center flex justify-center gap-1">{isEditing ? <button onClick={()=>{if(editForm){onUpdateDispatch(editForm);setEditingId(null);}}} className="bg-blue-500 text-white px-2 py-1 rounded">저장</button> : <>{d.status==='pending'&&<button onClick={()=>onUpdateStatus(d.id,'sent')} className="bg-blue-600 text-white px-2 py-1 rounded">전송</button>}<button onClick={()=>startEditing(d)} className="text-slate-400 p-1">✏️</button><button onClick={()=>{if(confirm('삭제?'))onDeleteDispatch(d.id)}} className="text-slate-400 p-1">🗑️</button></>}</td>
+                    
+                    <td className="px-3 py-2 text-center flex justify-center gap-1">
+                      {isEditing ? (
+                        <button onClick={()=>{if(editForm){onUpdateDispatch(editForm);setEditingId(null);}}} className="bg-blue-500 text-white px-2 py-1 rounded">저장</button>
+                      ) : (
+                        <>
+                          {d.status==='pending'&&<button onClick={()=>onUpdateStatus(d.id,'sent')} className="bg-blue-600 text-white px-2 py-1 rounded">전송</button>}
+                          <button onClick={()=>startEditing(d)} className="text-slate-400 p-1">✏️</button>
+                          <button onClick={()=>{if(confirm('삭제?'))onDeleteDispatch(d.id)}} className="text-slate-400 p-1">🗑️</button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -376,6 +499,7 @@ const DispatchManagementView: React.FC<Props> = ({
           </table>
         </div>
       ) : (
+        /* 기사님용 카드 뷰 */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
             {userDispatches.map(d => (
                 <div key={d.id} className={`bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border ${d.status === 'completed' ? 'border-green-500 ring-1 ring-green-500 bg-green-50/10' : 'border-slate-200'}`}>
@@ -409,18 +533,21 @@ const DispatchManagementView: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 모달 (카메라/입력 공용) */}
+      {/* -------------------------------------------------------------------------- */}
+      {/* 카메라 및 확인 모달 (Modal)                                                */}
+      {/* -------------------------------------------------------------------------- */}
       {cameraOpen && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
            <div className="p-4 flex justify-between items-center text-white"><button onClick={closeCameraModal} className="text-lg font-bold">취소</button><span className="font-bold">송장/수량 입력</span><div className="w-10"></div></div>
            
+           {/* 1. 카메라 촬영 모드 */}
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                   {/* 👇 [수정됨] 여기가 핵심입니다. 사진 저장 시 0.5 퀄리티로 압축하여 저장합니다. */}
                    <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg', 0.5)); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
                </div>
            ) : (
+               /* 2. 사진 확인 모드 (앨범/촬영 후) */
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
                    {capturedPhoto ? (
                        <img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />
@@ -431,6 +558,7 @@ const DispatchManagementView: React.FC<Props> = ({
                </div>
            )}
 
+           {/* 하단 입력 폼 (카메라 모드 아닐 때만 노출) */}
            {!isCameraMode && (
                <div className="bg-white p-5 space-y-4 rounded-t-3xl pb-10">
                    <div className="flex items-center gap-3"><label className="font-bold">실중량:</label><input type="number" inputMode="decimal" autoFocus value={modalQuantity} onChange={e => setModalQuantity(e.target.value)} className="flex-1 border-b-2 border-blue-500 p-2 text-2xl font-black text-blue-600 text-center outline-none" placeholder="0.00" /><span className="font-bold">ton</span></div>
