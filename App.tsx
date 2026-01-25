@@ -79,7 +79,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
-  // 실시간 감지
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('global-changes')
@@ -142,25 +141,33 @@ const App: React.FC = () => {
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
       
-      // 👇 [중요] 데이터 매핑 강화 (snake_case -> camelCase)
+      // 👇 [중요 수정] 운행목록 데이터가 비어있어도 에러 안 나게 안전 처리 (이게 핵심!)
       if (o.data) setOperations(o.data.map((x:any) => ({ 
-          ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, 
-          unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, 
-          settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, 
-          itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo
+          ...x, 
+          id: x.id, 
+          date: x.date || '', // 날짜 없으면 빈칸
+          clientName: x.client_name || '', // 거래처 없으면 빈칸
+          vehicleNo: x.vehicle_no || '', // 차량번호 없으면 빈칸
+          unitPrice: x.unit_price || 0, 
+          supplyPrice: x.supply_price || 0, 
+          totalAmount: x.total_amount || 0, 
+          settlementStatus: x.settlement_status || 'PENDING', 
+          branchName: x.branch_name || '', 
+          clientUnitPrice: x.client_unit_price || 0, 
+          itemDescription: x.item_description || '', 
+          isInvoiceIssued: x.is_invoice_issued || false, 
+          invoicePhoto: x.invoice_photo || undefined,
+          origin: x.origin || '',
+          destination: x.destination || '',
+          item: x.item || '',
+          quantity: x.quantity || 0,
+          remarks: x.remarks || ''
       })));
       
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      
-      // 👇 [중요] 배차 데이터 매핑 강화 (데이터 증발 방지)
-      if (d.data) setDispatches(d.data.map((x:any) => ({ 
-          id: x.id, date: x.date, clientName: x.client_name, 
-          vehicleNo: x.vehicle_no || x.vehicleNo || '', // 없는 경우 빈값 처리
-          origin: x.origin, destination: x.destination, item: x.item, 
-          count: x.count, remarks: x.remarks, status: x.status 
-      })));
+      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no || x.vehicleNo || '', origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
@@ -210,21 +217,19 @@ const App: React.FC = () => {
   const handleAddOperation = async (op: Operation) => {
       setOperations(prev => [op, ...prev]); 
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').insert(dbData);
-      // fetchData() 생략 (속도 개선)
   };
 
   const handleUpdateOperation = async (op: Operation) => {
-      // 🚀 [즉시반영] 화면부터 먼저 바꾸고 서버 통신은 뒤에서 함
+      // 🚀 화면부터 즉시 변경 (반응속도 0.1초)
       setOperations(prev => prev.map(o => o.id === op.id ? op : o));
       
       const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
+        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
-      // fetchData() 생략 (속도 개선)
   };
 
   const handleSaveUnitPrice = async (u: UnitPriceMaster) => {
@@ -272,7 +277,7 @@ const App: React.FC = () => {
                 fetchData(); 
             }} 
             onDeleteDispatch={async (id) => { 
-                setDispatches(prev => prev.filter(d => d.id !== id)); // 즉시 삭제
+                setDispatches(prev => prev.filter(d => d.id !== id));
                 if(confirm("삭제?")) { await supabase.from('dispatches').delete().eq('id', id); fetchData(); }
             }} 
             onUpdateStatus={handleUpdateDispatchStatus} 
@@ -283,7 +288,7 @@ const App: React.FC = () => {
         return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
             onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
             onDeleteOperation={async (id) => { 
-                setOperations(prev => prev.filter(o => o.id !== id)); // 즉시 삭제
+                setOperations(prev => prev.filter(o => o.id !== id));
                 if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
