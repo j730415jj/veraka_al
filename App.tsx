@@ -18,8 +18,6 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-const BEEP_SOUND = "data:audio/wav;base64,UklGRl9vT1BXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU";
-
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
@@ -40,49 +38,26 @@ const App: React.FC = () => {
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
-
-    if ("Notification" in window && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-
+    if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+    
     const unlockAudioAndScreen = async () => {
       if(audioRef.current) {
         audioRef.current.volume = 0; 
-        audioRef.current.play().then(() => {
-            audioRef.current!.pause();
-            audioRef.current!.currentTime = 0;
-            audioRef.current!.volume = 1.0;
-        }).catch(() => {});
+        audioRef.current.play().catch(() => {});
       }
-      try {
-        if ('wakeLock' in navigator) {
-            wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        }
-      } catch (err) {}
+      try { if ('wakeLock' in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
     document.addEventListener('click', unlockAudioAndScreen);
     document.addEventListener('touchstart', unlockAudioAndScreen);
-    document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState === 'visible' && 'wakeLock' in navigator) {
-            try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch {}
-        }
-    });
   }, []);
 
   const playAlertSound = (title: string, body: string) => {
     try {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(e => console.warn(e));
-      }
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([500, 200, 500, 200, 500]); 
-      }
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, { body, icon: '/vite.svg' });
-      }
+      if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(e => console.warn(e)); }
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]); 
+      if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: '/vite.svg' });
     } catch (e) { console.error(e); }
   };
 
@@ -104,13 +79,14 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
+  // 실시간 감지
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          const safeVehicleNo = newD.vehicle_no || newD.vehicleNo;
-          const convertDispatch = (d: any): Partial<Dispatch> => ({
+          const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
+          const convertDispatch = (d: any): Dispatch => ({
             id: d.id, date: d.date, clientName: d.client_name, 
             vehicleNo: safeVehicleNo,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
@@ -118,33 +94,27 @@ const App: React.FC = () => {
           });
 
           if (payload.eventType === 'INSERT') {
-            const newDispatch = convertDispatch(newD) as Dispatch;
-            setDispatches(prev => {
-                const exists = prev.find(p => p.id === newDispatch.id);
-                if (exists) return prev;
-                return [newDispatch, ...prev];
-            });
+            const newDispatch = convertDispatch(newD);
+            setDispatches(prev => [newDispatch, ...prev]);
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
               playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
             }
-            fetchData();
           } 
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
                     const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
-                    return { ...d, ...updated, vehicleNo: protectedVehicleNo, clientName: updated.clientName || d.clientName, origin: updated.origin || d.origin, destination: updated.destination || d.destination, item: updated.item || d.item, status: updated.status || d.status } as Dispatch;
+                    return { ...d, ...updated, vehicleNo: protectedVehicleNo };
                 }
                 return d;
             }));
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo || ''} / 송장 등록됨`);
-               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo || ''}\n송장 등록됨`), 300);
+               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo} / 송장 등록됨`);
+               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 300);
             }
-            fetchData();
           }
           else if (payload.eventType === 'DELETE') {
              setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
@@ -171,13 +141,27 @@ const App: React.FC = () => {
 
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
+      
+      // 👇 [중요] 데이터 매핑 강화 (snake_case -> camelCase)
       if (o.data) setOperations(o.data.map((x:any) => ({ 
-          ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo
+          ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, 
+          unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, 
+          settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, 
+          itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo
       })));
+      
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      if (d.data) setDispatches(d.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no || x.vehicleNo, origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status })));
+      
+      // 👇 [중요] 배차 데이터 매핑 강화 (데이터 증발 방지)
+      if (d.data) setDispatches(d.data.map((x:any) => ({ 
+          id: x.id, date: x.date, clientName: x.client_name, 
+          vehicleNo: x.vehicle_no || x.vehicleNo || '', // 없는 경우 빈값 처리
+          origin: x.origin, destination: x.destination, item: x.item, 
+          count: x.count, remarks: x.remarks, status: x.status 
+      })));
+
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
 
@@ -224,23 +208,23 @@ const App: React.FC = () => {
   const handleDeleteClient = async (id: string) => { if(confirm("삭제?")) { await supabase.from('clients').delete().eq('id', id); fetchData(); }};
 
   const handleAddOperation = async (op: Operation) => {
-      setOperations(prev => [op, ...prev]); // 🚀 [즉시반영] 화면부터 추가
+      setOperations(prev => [op, ...prev]); 
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
       };
       await supabase.from('operations').insert(dbData);
-      fetchData(); // 백그라운드 동기화
+      // fetchData() 생략 (속도 개선)
   };
 
   const handleUpdateOperation = async (op: Operation) => {
-      // 🚀 [즉시반영] 화면의 데이터를 먼저 바꿔치기 (기다리지 않음)
+      // 🚀 [즉시반영] 화면부터 먼저 바꾸고 서버 통신은 뒤에서 함
       setOperations(prev => prev.map(o => o.id === op.id ? op : o));
       
       const dbData = {
         date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
-      // fetchData는 굳이 바로 안 해도 됨 (이미 바꿨으니까)
+      // fetchData() 생략 (속도 개선)
   };
 
   const handleSaveUnitPrice = async (u: UnitPriceMaster) => {
@@ -288,11 +272,8 @@ const App: React.FC = () => {
                 fetchData(); 
             }} 
             onDeleteDispatch={async (id) => { 
-                if(confirm("삭제?")) {
-                    setDispatches(prev => prev.filter(d => d.id !== id));
-                    await supabase.from('dispatches').delete().eq('id', id); 
-                    fetchData(); 
-                }
+                setDispatches(prev => prev.filter(d => d.id !== id)); // 즉시 삭제
+                if(confirm("삭제?")) { await supabase.from('dispatches').delete().eq('id', id); fetchData(); }
             }} 
             onUpdateStatus={handleUpdateDispatchStatus} 
             onNavigate={setCurrentView} onAddSnippet={handleSaveSnippet} onAddOperation={handleAddOperation}
@@ -302,8 +283,7 @@ const App: React.FC = () => {
         return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
             onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
             onDeleteOperation={async (id) => { 
-                // 🚀 [즉시반영] 화면에서 먼저 삭제
-                setOperations(prev => prev.filter(o => o.id !== id));
+                setOperations(prev => prev.filter(o => o.id !== id)); // 즉시 삭제
                 if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;

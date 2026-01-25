@@ -17,7 +17,7 @@ const colWidths = {
   supply: 'w-[110px]',
   tax: 'w-[100px]',
   total: 'w-[120px]',
-  photo: 'w-[90px]',
+  photo: 'w-[100px]', // 사진+체크박스 너비 넓힘
   trans: 'w-[70px]', 
   invoice: 'w-[70px]',
   remarks: 'w-[200px]',
@@ -217,7 +217,6 @@ const OperationEntryView: React.FC<Props> = ({
     link.click();
   };
 
-  // 1개 공유 (단일)
   const handleShare = async (op: Operation) => {
     if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
     if (navigator.share) {
@@ -229,19 +228,15 @@ const OperationEntryView: React.FC<Props> = ({
         const u8arr = new Uint8Array(n);
         while (n--) { u8arr[n] = bstr.charCodeAt(n); }
         const file = new File([u8arr], `invoice_${op.id}.jpg`, { type: mime });
-        
-        // 👇 텍스트 없이 파일만 보냄 (카톡 호환성 최적화)
         await navigator.share({ files: [file] });
       } catch (err) { }
     } else {
-      alert("이 브라우저는 공유 기능을 지원하지 않습니다.");
+      alert("이 브라우저는 공유를 지원하지 않습니다.");
     }
   };
 
-  // 👇 [수정됨] 일괄 공유 (카톡 호환성 최적화)
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
-    
     const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
 
@@ -259,23 +254,17 @@ const OperationEntryView: React.FC<Props> = ({
       }
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
-        // 👇 [핵심] title, text 다 빼고 오직 파일만 보냄 (카톡에서 파일 전송으로 인식하게 함)
         await navigator.share({
           files: filesArray
         });
-        
-        // 전송 완료 체크
         targets.forEach(op => {
             onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
         });
         setSelectedIds([]); 
       } else {
-        alert("이 기기에서는 일괄 공유를 지원하지 않습니다.\n하나씩 공유해 주세요.");
+        alert("이 브라우저는 일괄 공유를 지원하지 않습니다.");
       }
-    } catch (e) { 
-        console.error(e);
-        // 취소하거나 에러나면 아무것도 안 함 (사용자 혼란 방지)
-    }
+    } catch (e) { console.error(e); }
   };
 
   const toggleSelection = (id: string) => {
@@ -328,7 +317,6 @@ const OperationEntryView: React.FC<Props> = ({
         </div>
         <div className="flex justify-end items-center">
           <div className="flex space-x-2">
-            {/* 👇 공유 버튼 (왼쪽) */}
             <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1">
                <span>📤</span> 
                <span>공유 ({selectedIds.length})</span>
@@ -366,7 +354,6 @@ const OperationEntryView: React.FC<Props> = ({
             </thead>
             
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {/* 입력 행 */}
               <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
                 <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
                 <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center font-bold" /></td>
@@ -463,6 +450,7 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displayTax.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-black text-rose-600 dark:text-rose-400">{displayTotal.toLocaleString()}</td>
                         
+                        {/* 👇 [수정됨] 사진 + 체크박스 오른쪽 칼정렬 */}
                         <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-between w-full px-1">
                             {op.invoicePhoto ? (
@@ -478,12 +466,12 @@ const OperationEntryView: React.FC<Props> = ({
                           </div>
                         </td>
 
-                        {/* 전송완료 (녹색 버튼) */}
+                        {/* 👇 [수정됨] 전송완료 (녹색 버튼, 수동 체크 가능) */}
                         <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleSettlement(op); }}>
                            <button className={`w-6 h-6 rounded border transition-colors ${isShared ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
                         </td>
 
-                        {/* 송장상태 (녹색 버튼) */}
+                        {/* 👇 [기존] 송장상태 (녹색 버튼) */}
                         <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleInvoice(op); }}>
                           <button className={`w-6 h-6 rounded border transition-colors ${op.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
                         </td>
