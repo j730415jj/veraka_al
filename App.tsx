@@ -116,14 +116,14 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
-  // 3. 실시간 감지 (여기가 수정됨: 차량번호 보호 로직 추가)
+  // 3. 실시간 감지
   useEffect(() => {
     if (!user) return;
     
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // DB 데이터를 앱 데이터로 변환 (값이 없으면 undefined가 될 수 있음)
+          // DB 데이터를 앱 데이터로 변환
           const convertDispatch = (d: any): Partial<Dispatch> => ({
             id: d.id, date: d.date, clientName: d.client_name, vehicleNo: d.vehicle_no,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
@@ -135,11 +135,10 @@ const App: React.FC = () => {
             
             setDispatches(prev => {
                 const exists = prev.find(p => p.id === newDispatch.id);
-                if (exists) return prev; // 이미 있으면 무시 (중복 방지)
+                if (exists) return prev;
                 return [newDispatch, ...prev];
             });
             
-            // 기사님 알람
             if (user.role === 'VEHICLE' && newDispatch.vehicleNo === user.identifier) {
               playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
@@ -149,16 +148,13 @@ const App: React.FC = () => {
           else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             
-            // 👇 [수정됨] 업데이트 시 차량번호 증발 방지 (기존 데이터 우선 보호)
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
-                    // 새 데이터에 차량번호가 있으면 쓰고, 없으면 기존꺼(d.vehicleNo)를 꽉 잡고 놓지 않음!
                     const safeVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
-                    
                     return { 
                         ...d, 
-                        ...updated, // 덮어쓰되...
-                        vehicleNo: safeVehicleNo, // 차량번호는 안전하게 보호된 값으로 다시 덮어씀
+                        ...updated, 
+                        vehicleNo: safeVehicleNo, 
                         clientName: updated.clientName || d.clientName,
                         origin: updated.origin || d.origin,
                         destination: updated.destination || d.destination,
@@ -169,7 +165,6 @@ const App: React.FC = () => {
                 return d;
             }));
 
-            // 관리자 알람
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo || ''} / 송장 등록됨`);
@@ -203,7 +198,24 @@ const App: React.FC = () => {
 
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
-      if (o.data) setOperations(o.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, vehicleNo: x.vehicle_no, unitPrice: x.unit_price, supplyPrice: x.supply_price, totalAmount: x.total_amount, settlementStatus: x.settlement_status, branchName: x.branch_name, clientUnitPrice: x.client_unit_price, itemDescription: x.item_description, isInvoiceIssued: x.is_invoice_issued, invoicePhoto: x.invoice_photo })));
+      
+      // 👇 [중요] invoice_photo (DB) -> invoicePhoto (앱) 연결을 확실하게!
+      if (o.data) setOperations(o.data.map((x:any) => ({ 
+          ...x, 
+          id: x.id, 
+          clientName: x.client_name, 
+          vehicleNo: x.vehicle_no, 
+          unitPrice: x.unit_price, 
+          supplyPrice: x.supply_price, 
+          totalAmount: x.total_amount, 
+          settlementStatus: x.settlement_status, 
+          branchName: x.branch_name, 
+          clientUnitPrice: x.client_unit_price, 
+          itemDescription: x.item_description, 
+          isInvoiceIssued: x.is_invoice_issued, 
+          invoicePhoto: x.invoice_photo // 여기가 핵심입니다
+      })));
+      
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
@@ -258,7 +270,8 @@ const App: React.FC = () => {
 
   const handleAddOperation = async (op: Operation) => {
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, 
+          invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').insert(dbData);
       fetchData(); 
@@ -266,7 +279,8 @@ const App: React.FC = () => {
 
   const handleUpdateOperation = async (op: Operation) => {
       const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
+        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, 
+        invoice_photo: op.invoicePhoto 
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
       fetchData();
@@ -305,9 +319,8 @@ const App: React.FC = () => {
             user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
-                // 차량번호가 비어있지 않은지 한번 더 확인 후 DB 전송
                 if (!d.vehicleNo) { alert('차량번호 누락!'); return; }
-                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicle_no, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
             }} 
@@ -329,6 +342,7 @@ const App: React.FC = () => {
             onUpdateOperation={handleUpdateOperation} 
           />;
       case ViewType.OPERATION_ENTRY:
+        // 👇 이 부분이 스크린샷에 나온 화면입니다.
         return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
             onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
             onDeleteOperation={async (id) => { if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }}} />;
