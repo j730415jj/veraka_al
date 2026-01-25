@@ -292,7 +292,7 @@ const DispatchManagementView: React.FC<Props> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 최종 전송 (사진 + 운행기록 저장)
+  // 최종 전송 (사진 + 운행기록 저장) - 순서 최적화 적용됨
   // --------------------------------------------------------------------------
   const handleFinalSubmit = async () => {
     if (!activeDispatchId) return;
@@ -304,14 +304,11 @@ const DispatchManagementView: React.FC<Props> = ({
       
       if (!targetDispatch) throw new Error("배차 정보를 찾을 수 없습니다.");
 
-      // 1. 배차 상태 'completed'로 변경 (사진 URL 포함)
-      await onUpdateStatus(activeDispatchId, 'completed', capturedPhoto || undefined, quantity);
-      
-      // 2. 운행기록(Operations) 자동 등록 또는 수정
+      // 1. 운행기록(Operations) 먼저 준비 (사진 데이터 확보)
       const existingOp = operations.find(o => 
           o.vehicleNo === targetDispatch.vehicleNo && 
           o.date === targetDispatch.date && 
-          o.origin === targetDispatch.origin &&
+          o.origin === targetDispatch.origin && 
           o.destination === targetDispatch.destination
       );
 
@@ -345,7 +342,7 @@ const DispatchManagementView: React.FC<Props> = ({
         tax: tax,
         totalAmount: totalAmount,
         remarks: targetDispatch.remarks || '',
-        // 사진 데이터 유지 (새 사진이 없으면 기존 사진 유지)
+        // 👇 사진이 있으면 넣고, 없으면 기존꺼 유지 (중요!)
         invoicePhoto: capturedPhoto || (existingOp ? existingOp.invoicePhoto : undefined),
         isInvoiceIssued: existingOp ? existingOp.isInvoiceIssued : false,
         settlementStatus: existingOp ? existingOp.settlementStatus : 'PENDING',
@@ -355,11 +352,15 @@ const DispatchManagementView: React.FC<Props> = ({
         isVatIncluded: false
       };
 
+      // 2. DB 업데이트 실행 (운행기록부터 저장하여 사진 확보)
       if (existingOp && onUpdateOperation) {
-         onUpdateOperation(opData);
+         await onUpdateOperation(opData); // await 추가하여 저장 완료 대기
       } else {
-         onAddOperation(opData);
+         await onAddOperation(opData); // await 추가
       }
+
+      // 3. 배차 상태 'completed'로 변경 (마지막에 실행하여 리스트 갱신)
+      await onUpdateStatus(activeDispatchId, 'completed', capturedPhoto || undefined, quantity);
 
       closeCameraModal();
 
@@ -405,7 +406,7 @@ const DispatchManagementView: React.FC<Props> = ({
       </div>
 
       {/* -------------------------------------------------------------------------- */}
-      {/* 관리자 입력 폼                                                             */}
+      {/* 관리자 입력 폼                                                             */}
       {/* -------------------------------------------------------------------------- */}
       {user.role === 'ADMIN' && (
         <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-blue-200 dark:border-slate-700 shadow-sm sticky top-0 z-20">
@@ -425,7 +426,7 @@ const DispatchManagementView: React.FC<Props> = ({
       )}
 
       {/* -------------------------------------------------------------------------- */}
-      {/* 배차 목록 뷰 (관리자: 테이블 / 기사님: 카드)                                */}
+      {/* 배차 목록 뷰 (관리자: 테이블 / 기사님: 카드)                                */}
       {/* -------------------------------------------------------------------------- */}
       {user.role === 'ADMIN' ? (
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-x-auto min-h-[300px]">
@@ -469,7 +470,7 @@ const DispatchManagementView: React.FC<Props> = ({
                       )}
                     </td>
 
-                    {/* 👇 [수정됨] 품명(Item)도 수정할 수 있게 변경 */}
+                    {/* 품명 수정 */}
                     <td className="px-3 py-2">
                       {isEditing ? (
                         <input value={editForm?.item} onChange={e=>setEditForm(p=>p?({...p,item:e.target.value}):null)} className="border rounded w-20 px-1" />
@@ -534,7 +535,7 @@ const DispatchManagementView: React.FC<Props> = ({
       )}
 
       {/* -------------------------------------------------------------------------- */}
-      {/* 카메라 및 확인 모달 (Modal)                                                */}
+      {/* 카메라 및 확인 모달 (Modal)                                                */}
       {/* -------------------------------------------------------------------------- */}
       {cameraOpen && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -544,6 +545,7 @@ const DispatchManagementView: React.FC<Props> = ({
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                   {/* 사진 촬영 시 0.5 퀄리티 압축 (데이터베이스 용량 보호) */}
                    <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg', 0.5)); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
                </div>
            ) : (
