@@ -192,7 +192,6 @@ const DispatchManagementView: React.FC<Props> = ({
   
   const userDispatches = dispatches.filter(d => user.role === 'ADMIN' || d.vehicleNo === user.identifier || (user.role === 'PARTNER' && d.clientName === user.identifier));
 
-  // 👇 [수정됨] 여기가 핵심입니다. 가로(flex-wrap) -> 세로(flex-col) 변경
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
     const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) : [];
@@ -418,7 +417,8 @@ const DispatchManagementView: React.FC<Props> = ({
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                   <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg')); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
+                   {/* 👇 [수정됨] 여기가 핵심입니다. 사진 저장 시 0.5 퀄리티로 압축하여 저장합니다. */}
+                   <button onClick={() => { if(videoRef.current) { const cvs = document.createElement('canvas'); cvs.width = videoRef.current.videoWidth; cvs.height = videoRef.current.videoHeight; cvs.getContext('2d')?.drawImage(videoRef.current,0,0); setCapturedPhoto(cvs.toDataURL('image/jpeg', 0.5)); setIsCameraMode(false); } }} className="absolute bottom-10 w-20 h-20 bg-white rounded-full border-4 border-gray-300"></button>
                </div>
            ) : (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
