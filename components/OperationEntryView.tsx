@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
-// 테이블 컬럼 설정
 const colWidths = {
   check: 'w-[40px]', 
   date: 'w-[80px]',
@@ -17,7 +16,7 @@ const colWidths = {
   supply: 'w-[110px]',
   tax: 'w-[100px]',
   total: 'w-[120px]',
-  photo: 'w-[100px]', // 사진+체크박스 너비 넓힘
+  photo: 'w-[100px]', 
   trans: 'w-[70px]', 
   invoice: 'w-[70px]',
   remarks: 'w-[200px]',
@@ -55,9 +54,7 @@ const OperationEntryView: React.FC<Props> = ({
   const [filterDestination, setFilterDestination] = useState('');
   const [filterRemarks, setFilterRemarks] = useState('');
   const [editTarget, setEditTarget] = useState<Operation | null>(null);
-  
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
   const [viewingOp, setViewingOp] = useState<Operation | null>(null);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -68,19 +65,9 @@ const OperationEntryView: React.FC<Props> = ({
 
   const [newEntry, setNewEntry] = useState<Partial<Operation>>({
     date: new Date().toISOString().split('T')[0],
-    vehicleNo: '',
-    clientName: isPartner ? user.identifier : '',
-    branchName: '', 
-    clientUnitPrice: 0,
-    origin: '',
-    destination: '',
-    unitPrice: 0,
-    item: '',
-    quantity: 0,
-    remarks: '',
-    settlementStatus: 'PENDING',
-    isVatIncluded: false,
-    isInvoiceIssued: false
+    vehicleNo: '', clientName: isPartner ? user.identifier : '', branchName: '', 
+    clientUnitPrice: 0, origin: '', destination: '', unitPrice: 0, item: '', quantity: 0,
+    remarks: '', settlementStatus: 'PENDING', isVatIncluded: false, isInvoiceIssued: false
   });
 
   const clientNames = useMemo(() => clients.map(c => c.clientName).sort(), [clients]);
@@ -116,10 +103,7 @@ const OperationEntryView: React.FC<Props> = ({
   const handleNewEntryChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const finalValue = type === 'number' ? Number(value) : value;
-    if (name === 'clientName') {
-       setNewEntry(prev => ({ ...prev, clientName: value, branchName: '' }));
-       return;
-    }
+    if (name === 'clientName') { setNewEntry(prev => ({ ...prev, clientName: value, branchName: '' })); return; }
     if (name === 'branchName' || name === 'origin' || name === 'destination') {
       const updated = { ...newEntry, [name]: finalValue };
       const matched = unitPriceMaster.find(up => 
@@ -141,15 +125,9 @@ const OperationEntryView: React.FC<Props> = ({
     const { supplyPrice, tax, totalAmount } = calculatePrices(newEntry.unitPrice || 0, newEntry.quantity || 0);
     const op: Operation = {
       ...newEntry as Operation,
-      id: Date.now().toString(),
-      itemCode: 'AUTO',
-      itemDescription: '',
-      supplyPrice,
-      tax,
-      totalAmount,
-      isVatIncluded: false,
-      isInvoiceIssued: newEntry.isInvoiceIssued || false,
-      remarks: newEntry.remarks || ''
+      id: Date.now().toString(), itemCode: 'AUTO', itemDescription: '',
+      supplyPrice, tax, totalAmount, isVatIncluded: false,
+      isInvoiceIssued: newEntry.isInvoiceIssued || false, remarks: newEntry.remarks || ''
     };
     onAddOperation(op);
     setNewEntry(prev => ({ ...prev, quantity: 0, remarks: '', isInvoiceIssued: false }));
@@ -202,92 +180,38 @@ const OperationEntryView: React.FC<Props> = ({
   };
 
   const handleSaveFromViewer = () => {
-    if (viewingOp) {
-      onUpdateOperation(viewingOp);
-      alert('수정사항이 저장되었습니다.');
-      setViewingOp(null);
-    }
+    if (viewingOp) { onUpdateOperation(viewingOp); alert('수정사항이 저장되었습니다.'); setViewingOp(null); }
   };
 
   const handleDownload = () => {
     if (!viewingOp?.invoicePhoto) return;
-    const link = document.createElement('a');
-    link.href = viewingOp.invoicePhoto;
-    link.download = `송장_${viewingOp.vehicleNo}_${viewingOp.date}.jpg`;
-    link.click();
-  };
-
-  const handleShare = async (op: Operation) => {
-    if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
-    if (navigator.share) {
-      try {
-        const arr = op.invoicePhoto.split(',');
-        const mime = arr[0].match(/:(.*?);/)?.[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-        const file = new File([u8arr], `invoice_${op.id}.jpg`, { type: mime });
-        await navigator.share({ files: [file] });
-      } catch (err) { }
-    } else {
-      alert("이 브라우저는 공유를 지원하지 않습니다.");
-    }
+    const link = document.createElement('a'); link.href = viewingOp.invoicePhoto; link.download = `송장_${viewingOp.vehicleNo}_${viewingOp.date}.jpg`; link.click();
   };
 
   const handleBulkShare = async () => {
     if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
     const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
-
     try {
       const filesArray: File[] = [];
       for (const op of targets) {
-        const arr = op.invoicePhoto!.split(',');
-        const mime = arr[0].match(/:(.*?);/)?.[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
+        const arr = op.invoicePhoto!.split(','); const mime = arr[0].match(/:(.*?);/)?.[1];
+        const bstr = atob(arr[1]); let n = bstr.length; const u8arr = new Uint8Array(n);
         while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-        const file = new File([u8arr], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: mime });
-        filesArray.push(file);
+        filesArray.push(new File([u8arr], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: mime }));
       }
-
       if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
-        await navigator.share({
-          files: filesArray
-        });
-        targets.forEach(op => {
-            onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
-        });
+        await navigator.share({ files: filesArray });
+        targets.forEach(op => { onUpdateOperation({ ...op, settlementStatus: 'SHARED' }); });
         setSelectedIds([]); 
-      } else {
-        alert("이 브라우저는 일괄 공유를 지원하지 않습니다.");
-      }
+      } else { alert("이 브라우저는 일괄 공유를 지원하지 않습니다."); }
     } catch (e) { console.error(e); }
   };
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.2 : 0.2;
-    setZoom(prev => Math.min(Math.max(0.5, prev + delta), 5));
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (zoom <= 1) return;
-    setIsDragging(true);
-    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
-  };
-
+  const toggleSelection = (id: string) => { setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
+  const handleWheel = (e: React.WheelEvent) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.2 : 0.2; setZoom(prev => Math.min(Math.max(0.5, prev + delta), 5)); };
+  const handleMouseDown = (e: React.MouseEvent) => { if (zoom <= 1) return; setIsDragging(true); dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y }; };
+  const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); };
   const handleMouseUp = () => setIsDragging(false);
 
   return (
@@ -298,8 +222,9 @@ const OperationEntryView: React.FC<Props> = ({
       <datalist id="past-vehicles">{memory.vehicles.map(v => <option key={v} value={v} />)}</datalist>
       <datalist id="past-branches">{memory.branches.map(b => <option key={b} value={b} />)}</datalist>
 
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 no-print transition-colors shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-4 mb-4">
+      {/* 👇 [수정됨] 모바일: 2열 / PC: 7열 배치로 공간 확보 */}
+      <div className="bg-white dark:bg-slate-900 p-3 md:p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 no-print transition-colors shrink-0">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-2 md:gap-4 mb-2">
           {[
             { label: '일자 검색', val: filterDate, set: setFilterDate, ph: 'YYYY-MM-DD' },
             { label: '차량번호', val: filterVehicle, set: setFilterVehicle, ph: '차량번호', list: 'past-vehicles' },
@@ -311,18 +236,15 @@ const OperationEntryView: React.FC<Props> = ({
           ].map((f, i) => (
             <div key={i} className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-600 ml-1">{f.label}</label>
-              <input type="text" placeholder={f.ph} list={f.list} value={f.val} onChange={e => f.set(e.target.value)} disabled={(f as any).disabled} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 disabled:opacity-50" />
+              <input type="text" placeholder={f.ph} list={f.list} value={f.val} onChange={e => f.set(e.target.value)} disabled={(f as any).disabled} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 md:px-3 md:py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 disabled:opacity-50" />
             </div>
           ))}
         </div>
-        <div className="flex justify-end items-center">
+        <div className="flex justify-end items-center mt-2">
           <div className="flex space-x-2">
-            <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1">
-               <span>📤</span> 
-               <span>공유 ({selectedIds.length})</span>
-            </button>
-            <button onClick={() => { setFilterDate(''); setFilterVehicle(''); !isPartner && setFilterClient(''); setFilterBranch(''); setFilterOrigin(''); setFilterDestination(''); setFilterRemarks(''); }} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 px-4 py-2 rounded-lg text-xs font-bold transition">초기화</button>
-            <button className="bg-[#2563eb] hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-xs font-black shadow-sm">조회하기</button>
+            <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"><span>📤</span><span>공유 ({selectedIds.length})</span></button>
+            <button onClick={() => { setFilterDate(''); setFilterVehicle(''); !isPartner && setFilterClient(''); setFilterBranch(''); setFilterOrigin(''); setFilterDestination(''); setFilterRemarks(''); }} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold transition">초기화</button>
+            <button className="bg-[#2563eb] hover:bg-blue-700 text-white px-4 py-1.5 md:px-6 md:py-2 rounded-lg text-xs font-black shadow-sm">조회하기</button>
           </div>
         </div>
       </div>
@@ -357,18 +279,8 @@ const OperationEntryView: React.FC<Props> = ({
               <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
                 <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
                 <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center font-bold" /></td>
-                <td className="p-1">
-                  <select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold">
-                    <option value="">거래처</option>
-                    {clientNames.map(name => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                </td>
-                <td className="p-1">
-                  <select name="branchName" value={newEntry.branchName} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold">
-                    <option value="">지점 선택</option>
-                    {availableBranchesForNew.map(branch => <option key={branch} value={branch}>{branch}</option>)}
-                  </select>
-                </td>
+                <td className="p-1"><select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold"><option value="">거래처</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
+                <td className="p-1"><select name="branchName" value={newEntry.branchName} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold"><option value="">지점 선택</option>{availableBranchesForNew.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></td>
                 <td className="p-1"><input type="number" name="clientUnitPrice" value={newEntry.clientUnitPrice} onChange={handleNewEntryChange} className="w-full bg-rose-50 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900 rounded px-1 py-1 text-xs text-right font-black text-rose-700" /></td>
                 <td className="p-1"><input type="text" name="origin" list="past-origins" value={newEntry.origin} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center" /></td>
                 <td className="p-1"><input type="text" name="destination" list="past-destinations" value={newEntry.destination} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center" /></td>
@@ -380,9 +292,7 @@ const OperationEntryView: React.FC<Props> = ({
                 <td className="p-2 text-slate-400 text-center font-bold">자동</td>
                 <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">사진등록</td>
                 <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">자동체크</td>
-                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800">
-                  <button onClick={() => setNewEntry(prev => ({ ...prev, isInvoiceIssued: !prev.isInvoiceIssued }))} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${newEntry.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button>
-                </td>
+                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800"><button onClick={() => setNewEntry(prev => ({ ...prev, isInvoiceIssued: !prev.isInvoiceIssued }))} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${newEntry.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button></td>
                 <td className="p-1 bg-amber-50 dark:bg-slate-800"><input type="text" name="remarks" value={newEntry.remarks} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1.5 text-xs" /></td>
                 <td className="p-1 text-center"><button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white w-full py-1.5 rounded text-xs font-black shadow-md">등록</button></td>
               </tr>
@@ -400,17 +310,8 @@ const OperationEntryView: React.FC<Props> = ({
                       <>
                         <td className="p-1"><input type="date" name="date" value={editTarget.date} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs" /></td>
                         <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={editTarget.vehicleNo} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center font-bold" /></td>
-                        <td className="p-1">
-                          <select name="clientName" value={editTarget.clientName} onChange={handleEditChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold">
-                            {clientNames.map(name => <option key={name} value={name}>{name}</option>)}
-                          </select>
-                        </td>
-                        <td className="p-1">
-                          <select name="branchName" value={editTarget.branchName || ''} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold">
-                            <option value="">지점 선택</option>
-                            {availableBranchesForEdit.map(branch => <option key={branch} value={branch}>{branch}</option>)}
-                          </select>
-                        </td>
+                        <td className="p-1"><select name="clientName" value={editTarget.clientName} onChange={handleEditChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold">{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
+                        <td className="p-1"><select name="branchName" value={editTarget.branchName || ''} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold"><option value="">지점 선택</option>{availableBranchesForEdit.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></td>
                         <td className="p-1"><input type="number" name="clientUnitPrice" value={editTarget.clientUnitPrice} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-right font-black text-rose-600" /></td>
                         <td className="p-1"><input type="text" name="origin" list="past-origins" value={editTarget.origin} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center" /></td>
                         <td className="p-1"><input type="text" name="destination" list="past-destinations" value={editTarget.destination} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center" /></td>
@@ -420,19 +321,11 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="p-2 text-right font-bold text-slate-400">{displaySupply.toLocaleString()}</td>
                         <td className="p-2 text-right font-bold text-slate-400">{displayTax.toLocaleString()}</td>
                         <td className="p-2 text-right font-black text-blue-600">{displayTotal.toLocaleString()}</td>
-                        
                         <td className="p-1 text-center">{op.invoicePhoto ? <img src={op.invoicePhoto} className="w-8 h-8 rounded border mx-auto" /> : <span className="text-slate-300">없음</span>}</td>
-                        <td className="p-1 text-center">
-                           <button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, settlementStatus: editTarget!.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED'}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.settlementStatus === 'SHARED' ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>✔</button>
-                        </td>
-                        <td className="p-1 text-center">
-                           <button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, isInvoiceIssued: !editTarget!.isInvoiceIssued}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button>
-                        </td>
+                        <td className="p-1 text-center"><button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, settlementStatus: editTarget!.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED'}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.settlementStatus === 'SHARED' ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>✔</button></td>
+                        <td className="p-1 text-center"><button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, isInvoiceIssued: !editTarget!.isInvoiceIssued}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button></td>
                         <td className="p-1"><input type="text" name="remarks" value={editTarget!.remarks} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-2 py-1 text-xs" /></td>
-                        <td className="p-1 text-center space-x-1">
-                          <button onClick={(e) => { e.stopPropagation(); handleInlineUpdate(); }} className="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-black">저장</button>
-                          <button onClick={(e) => { e.stopPropagation(); setEditTarget(null); }} className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-black">취소</button>
-                        </td>
+                        <td className="p-1 text-center space-x-1"><button onClick={(e) => { e.stopPropagation(); handleInlineUpdate(); }} className="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-black">저장</button><button onClick={(e) => { e.stopPropagation(); setEditTarget(null); }} className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-black">취소</button></td>
                       </>
                     ) : (
                       <>

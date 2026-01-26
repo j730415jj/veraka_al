@@ -168,13 +168,13 @@ const DispatchManagementView: React.FC<Props> = ({
         item: s.item || '', 
         clientName: s.clientName || prev.clientName 
     }));
-    setActiveField(null);
+    setActiveField(null); // 선택 시 목록 닫기
   };
 
   const selectSuggestion = (field: string, value: string) => {
     if (field === 'origin') handleOriginChange(value);
     else setNewDispatch(prev => ({ ...prev, [field]: value } as any));
-    setActiveField(null);
+    setActiveField(null); // 선택 시 목록 닫기
   };
 
   // --------------------------------------------------------------------------
@@ -235,12 +235,12 @@ const DispatchManagementView: React.FC<Props> = ({
   // 현재 로그인한 사용자에 맞는 배차 목록 필터링
   const userDispatches = dispatches.filter(d => 
     user.role === 'ADMIN' || 
-    d.vehicleNo === user.identifier || 
+    String(d.vehicleNo).trim() === String(user.identifier).trim() || 
     (user.role === 'PARTNER' && d.clientName === user.identifier)
   );
 
   // --------------------------------------------------------------------------
-  // 자동완성 칩 렌더링 (세로 정렬 적용됨)
+  // 자동완성 칩 렌더링 (수정됨: 클릭 시 사라지고, 재클릭 시 나타남)
   // --------------------------------------------------------------------------
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
@@ -248,9 +248,9 @@ const DispatchManagementView: React.FC<Props> = ({
       ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) 
       : [];
     
-    const show = (newDispatch[field as keyof typeof newDispatch] || activeField === field) && (items.length > 0 || matchingSnippets.length > 0);
-    
-    if (!show) return null;
+    // 👇 [수정됨] 무조건 현재 클릭된(active) 상태일 때만 보여줌. (선택하면 active가 풀려서 사라짐)
+    if (activeField !== field) return null;
+    if (items.length === 0 && matchingSnippets.length === 0) return null;
     
     return (
       <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto">
@@ -292,7 +292,7 @@ const DispatchManagementView: React.FC<Props> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 최종 전송 (사진 + 운행기록 저장) - 순서 최적화 적용됨
+  // 최종 전송 (사진 + 운행기록 저장)
   // --------------------------------------------------------------------------
   const handleFinalSubmit = async () => {
     if (!activeDispatchId) return;
@@ -342,7 +342,7 @@ const DispatchManagementView: React.FC<Props> = ({
         tax: tax,
         totalAmount: totalAmount,
         remarks: targetDispatch.remarks || '',
-        // 👇 사진이 있으면 넣고, 없으면 기존꺼 유지 (중요!)
+        // 사진 데이터 유지 (새 사진이 없으면 기존 사진 유지)
         invoicePhoto: capturedPhoto || (existingOp ? existingOp.invoicePhoto : undefined),
         isInvoiceIssued: existingOp ? existingOp.isInvoiceIssued : false,
         settlementStatus: existingOp ? existingOp.settlementStatus : 'PENDING',
@@ -354,9 +354,9 @@ const DispatchManagementView: React.FC<Props> = ({
 
       // 2. DB 업데이트 실행 (운행기록부터 저장하여 사진 확보)
       if (existingOp && onUpdateOperation) {
-         await onUpdateOperation(opData); // await 추가하여 저장 완료 대기
+         await onUpdateOperation(opData); 
       } else {
-         await onAddOperation(opData); // await 추가
+         await onAddOperation(opData); 
       }
 
       // 3. 배차 상태 'completed'로 변경 (마지막에 실행하여 리스트 갱신)
