@@ -99,7 +99,6 @@ const StatementView: React.FC<Props> = ({
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 p-4 overflow-hidden">
       
-      {/* 상단 컨트롤 패널 */}
       <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-wrap gap-4 items-center justify-between shrink-0 no-print">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg">
