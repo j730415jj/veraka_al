@@ -60,7 +60,7 @@ const StatementView: React.FC<Props> = ({
         else targetMatch = op.clientName === filterTarget;
       }
 
-      // 지점(현장) 필터링
+      // 지점(현장) 필터링 (하차지 기준)
       let siteMatch = true;
       if (filterSite) {
         siteMatch = op.destination === filterSite;
@@ -91,6 +91,7 @@ const StatementView: React.FC<Props> = ({
       })
       .map(op => op.destination)
       .filter(Boolean);
+    // @ts-ignore
     return [...new Set(sites)];
   }, [operations, filterTarget, type]);
 
@@ -122,7 +123,7 @@ const StatementView: React.FC<Props> = ({
             <div className="flex justify-between items-start mb-6">
               <div className="space-y-4">
                  <h1 className="text-4xl font-black text-black">
-                   {title} (거래명세서)
+                   {title}
                  </h1>
                  <div className="text-5xl font-black text-blue-800 underline decoration-4 underline-offset-8">
                    {filterTarget}
