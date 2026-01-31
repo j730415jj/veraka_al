@@ -186,11 +186,11 @@ const StatementView: React.FC<Props> = ({
                                 <td className="border-r border-b border-blue-200">{op ? op.date.split('-')[2] : ''}</td>
                                 <td className="border-r border-b border-blue-200 text-left px-2">{op ? op.item : ''}</td>
                                 <td className="border-r border-b border-blue-200"></td>
-                                <td className="border-r border-b border-blue-200">{op ? op.quantity : ''}</td>
-                                <td className="border-r border-b border-blue-200 text-right px-2">{op ? op.clientUnitPrice.toLocaleString() : ''}</td>
-                                <td className="border-r border-b border-blue-200 text-right px-2">{op ? Math.floor(op.clientUnitPrice * op.quantity).toLocaleString() : ''}</td>
-                                <td className="border-r border-b border-blue-200 text-right px-2">{Math.floor(op.clientUnitPrice * op.quantity * 0.1).toLocaleString() : ''}</td>
-                                <td className="border-b border-blue-200 text-left px-2 truncate">{op ? op.remarks : ''}</td>
+                                <td className="border-r border-b border-red-200">{op ? op.quantity : ''}</td>
+                                <td className="border-r border-b border-red-200 text-right px-2">{op ? op.clientUnitPrice.toLocaleString() : ''}</td>
+                                <td className="border-r border-b border-red-200 text-right px-2">{op ? Math.floor(op.clientUnitPrice * op.quantity).toLocaleString() : ''}</td>
+                                <td className="border-r border-b border-red-200 text-right px-2">{Math.floor(op.clientUnitPrice * op.quantity * 0.1).toLocaleString() : ''}</td>
+                                <td className="border-b border-red-200 text-left px-2 truncate">{op ? op.remarks : ''}</td>
                              </tr>
                          );
                       })}
