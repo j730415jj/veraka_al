@@ -1,5 +1,4 @@
 // @ts-nocheck
-// 진짜최종업데이트
 /* eslint-disable */
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
@@ -26,11 +25,10 @@ const StatementView: React.FC<Props> = ({
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterTarget, setFilterTarget] = useState('');
-  const [filterSite, setFilterSite] = useState(''); // 현장(지점) 필터
+  const [filterSite, setFilterSite] = useState('');
 
   const componentRef = useRef<HTMLDivElement>(null);
 
-  // 1. 날짜 및 초기값 자동 세팅
   useEffect(() => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -48,7 +46,6 @@ const StatementView: React.FC<Props> = ({
     }
   }, [type, vehicles, clients, filterTarget]);
 
-  // 2. 데이터 필터링
   const filteredData = useMemo(() => {
     return operations.filter(op => {
       const opDate = op.date;
@@ -60,7 +57,6 @@ const StatementView: React.FC<Props> = ({
         else targetMatch = op.clientName === filterTarget;
       }
 
-      // 현장(지점) 필터링
       let siteMatch = true;
       if (filterSite && filterSite !== '전체') {
         siteMatch = op.destination === filterSite;
@@ -73,7 +69,6 @@ const StatementView: React.FC<Props> = ({
     });
   }, [operations, filterStartDate, filterEndDate, filterTarget, filterSite, type, userRole, userIdentifier]);
 
-  // 3. 합계 계산
   const totals = useMemo(() => {
     return filteredData.reduce((acc, curr) => ({
       supply: acc.supply + (curr.supplyPrice || 0),
@@ -83,7 +78,6 @@ const StatementView: React.FC<Props> = ({
     }), { supply: 0, tax: 0, total: 0, qty: 0 });
   }, [filteredData]);
 
-  // 4. 현장 목록 추출
   const siteList = useMemo(() => {
     const sites = operations
       .filter(op => {
@@ -115,14 +109,14 @@ const StatementView: React.FC<Props> = ({
   return (
     <div className="flex h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
       
-      {/* [왼쪽] 메인 문서 화면 (인쇄 영역) */}
+      {/* 왼쪽 메인 화면 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
         <div ref={componentRef} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
           
-            {/* 제목 영역 */}
+            {/* 🔥 제목 강제 변경 (컴퓨터 인식용) */}
             <div className="flex justify-between items-end mb-8 border-b-2 border-black pb-4">
               <div>
-                 <h1 className="text-4xl font-black text-black mb-4 tracking-wider">{title}</h1>
+                 <h1 className="text-4xl font-black text-black mb-4">!!!강제업데이트성공!!! {title}</h1>
                  <div className="text-3xl font-bold text-blue-800 underline decoration-4 underline-offset-8">
                    {filterTarget} <span className="text-xl text-black no-underline font-normal">귀하</span>
                  </div>
@@ -134,7 +128,7 @@ const StatementView: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* 공급자 정보 (베라카 고정) */}
+            {/* 공급자 정보 */}
             <div className="mb-6 border border-black text-sm">
                 <div className="flex border-b border-black">
                     <div className="w-24 bg-gray-100 font-bold p-2 text-center border-r border-black flex items-center justify-center">공급자</div>
@@ -159,7 +153,7 @@ const StatementView: React.FC<Props> = ({
                 </div>
             </div>
 
-            {/* 거래 내역 테이블 (엑셀 스타일) */}
+            {/* 표 영역 */}
             <table className="w-full text-xs border-collapse border border-black mb-4">
               <thead>
                 <tr className="bg-gray-100 text-center h-9 font-bold">
@@ -198,7 +192,6 @@ const StatementView: React.FC<Props> = ({
                 )) : (
                   <tr><td colSpan={9} className="py-20 text-center text-gray-400 border border-black">조회된 내역이 없습니다.</td></tr>
                 )}
-                {/* 빈 줄 채우기 */}
                 {Array.from({ length: Math.max(0, 18 - filteredData.length) }).map((_, i) => (
                   <tr key={`empty-${i}`} className="h-8 border border-black text-transparent">
                       <td className="border border-black">.</td>
@@ -224,14 +217,12 @@ const StatementView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* [오른쪽] 사이드바 (검색 기능) */}
+      {/* 오른쪽 사이드바 */}
       <div className="w-80 bg-white border-l border-slate-300 p-6 flex flex-col gap-6 shadow-2xl z-20 shrink-0 no-print h-full overflow-y-auto">
         <div className="pb-4 border-b border-slate-200">
-            <h2 className="text-xl font-black text-slate-800 mb-1">통합 검색</h2>
-            <p className="text-xs text-slate-500">차량/거래처 및 지점 선택</p>
+            <h2 className="text-xl font-black text-slate-800 mb-1">검색 옵션</h2>
+            <p className="text-xs text-slate-500">필터를 변경하면 자동 반영됩니다.</p>
         </div>
-
-        {/* 1. 조회 기간 */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-slate-500">조회 기간</label>
           <div className="flex flex-col gap-2">
@@ -241,8 +232,6 @@ const StatementView: React.FC<Props> = ({
                    className="w-full border border-slate-300 rounded p-2 text-sm font-bold bg-slate-50" />
           </div>
         </div>
-
-        {/* 2. 대상 선택 */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-slate-500">
             {type === 'vehicle' ? '차량 선택' : '거래처 선택'}
@@ -252,8 +241,6 @@ const StatementView: React.FC<Props> = ({
             {type === 'vehicle' ? vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo} ({v.ownerName})</option>) : clients.map(c => <option key={c.id} value={c.clientName}>{c.clientName}</option>)}
           </select>
         </div>
-
-        {/* 3. 현장 선택 */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-slate-500">현장 (지점) 필터</label>
           <select value={filterSite} onChange={e => setFilterSite(e.target.value)} 
@@ -264,9 +251,7 @@ const StatementView: React.FC<Props> = ({
             ))}
           </select>
         </div>
-
         <div className="flex-1"></div>
-
         <button onClick={handlePrint} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl text-lg font-bold shadow-lg">
           🖨️ 보고서 인쇄
         </button>
