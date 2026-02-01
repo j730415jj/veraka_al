@@ -118,24 +118,22 @@ const StatementView: React.FC<Props> = ({
       <div className="flex-1 overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
         <div ref={componentRef} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
           
-            {/* 제목 영역 (거래기간 삭제 -> 선택된 대상 표시) */}
+            {/* 제목 영역 */}
             <div className="flex justify-between items-end mb-8 border-b-2 border-black pb-4">
               <div>
                  <h1 className="text-4xl font-black text-black mb-4 tracking-wider">{title}</h1>
-                 {/* 요청하신 부분: 거래기간 삭제하고 선택된 차량/거래처 표시 */}
                  <div className="text-3xl font-bold text-blue-800 underline decoration-4 underline-offset-8">
                    {filterTarget} <span className="text-xl text-black no-underline font-normal">귀하</span>
                  </div>
               </div>
               
-              {/* 우측 상단 작게 기간 표시 (참고용) */}
               <div className="text-right text-sm text-gray-500">
                  발행일: {new Date().toLocaleDateString()} <br/>
                  기간: {filterStartDate} ~ {filterEndDate}
               </div>
             </div>
 
-            {/* 공급자 정보 (가로형 - 베라카 고정) */}
+            {/* 공급자 정보 (베라카 고정) */}
             <div className="mb-6 border border-black text-sm">
                 <div className="flex border-b border-black">
                     <div className="w-24 bg-gray-100 font-bold p-2 text-center border-r border-black flex items-center justify-center">공급자</div>
@@ -199,8 +197,7 @@ const StatementView: React.FC<Props> = ({
                 )) : (
                   <tr><td colSpan={9} className="py-20 text-center text-gray-400 border border-black">조회된 내역이 없습니다.</td></tr>
                 )}
-                
-                {/* 빈 칸 채우기 (A4 서식 유지용) */}
+                {/* 빈 줄 채우기 */}
                 {Array.from({ length: Math.max(0, 18 - filteredData.length) }).map((_, i) => (
                   <tr key={`empty-${i}`} className="h-8 border border-black text-transparent">
                       <td className="border border-black">.</td>
@@ -226,11 +223,11 @@ const StatementView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* [오른쪽] 사이드바 (검색 및 설정) */}
+      {/* [오른쪽] 사이드바 (검색 기능) */}
       <div className="w-80 bg-white border-l border-slate-300 p-6 flex flex-col gap-6 shadow-2xl z-20 shrink-0 no-print h-full overflow-y-auto">
         <div className="pb-4 border-b border-slate-200">
             <h2 className="text-xl font-black text-slate-800 mb-1">통합 검색</h2>
-            <p className="text-xs text-slate-500">필터를 변경하면 자동 반영됩니다.</p>
+            <p className="text-xs text-slate-500">차량/거래처 및 지점 선택</p>
         </div>
 
         {/* 1. 조회 기간 */}
@@ -244,7 +241,7 @@ const StatementView: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 2. 대상 선택 (차량/거래처) */}
+        {/* 2. 대상 선택 */}
         <div className="space-y-1">
           <label className="text-xs font-bold text-slate-500">
             {type === 'vehicle' ? '차량 선택' : '거래처 선택'}
@@ -269,7 +266,6 @@ const StatementView: React.FC<Props> = ({
 
         <div className="flex-1"></div>
 
-        {/* 인쇄 버튼 */}
         <button onClick={handlePrint} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl text-lg font-bold shadow-lg">
           🖨️ 보고서 인쇄
         </button>
