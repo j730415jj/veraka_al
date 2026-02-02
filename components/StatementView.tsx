@@ -2,8 +2,112 @@
 /* eslint-disable */
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import StatementReport from './StatementReport'; // 방금 만든 파일 불러오기
 
+// ----------------------------------------------------------------------
+// 1. 인쇄용 명세서 부품 (StatementReport)
+//    : 원래 따로 만들었던 걸 여기로 가져와서 합쳤습니다.
+//    : 이렇게 하면 파일 경로 에러가 절대 안 납니다.
+// ----------------------------------------------------------------------
+interface ReportProps {
+  title: string;
+  filterTarget: string;
+  filterStartDate: string;
+  filterEndDate: string;
+  provider: any;
+  filteredData: any[];
+  totals: any;
+  reportRef?: React.RefObject<HTMLDivElement>;
+}
+
+const StatementReport: React.FC<ReportProps> = ({
+  title,
+  filterTarget,
+  filterStartDate,
+  filterEndDate,
+  provider,
+  filteredData,
+  totals,
+  reportRef
+}) => {
+  return (
+    <div ref={reportRef} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
+      {/* 제목 */}
+      <div className="flex justify-between items-end mb-8 border-b-2 border-black pb-4">
+        <div>
+           <h1 className="text-4xl font-black text-black mb-4 tracking-wider">{title}</h1>
+           <div className="text-3xl font-bold text-blue-800 underline decoration-4 underline-offset-8">
+             {filterTarget} <span className="text-xl text-black no-underline font-normal">귀하</span>
+           </div>
+        </div>
+        <div className="text-right text-sm text-gray-500">
+           기간: {filterStartDate} ~ {filterEndDate}
+        </div>
+      </div>
+
+      {/* 공급자 정보 */}
+      <div className="mb-6 border border-black text-sm">
+          <div className="flex border-b border-black">
+              <div className="w-24 bg-gray-100 font-bold p-2 text-center border-r border-black flex items-center justify-center">공급자</div>
+              <div className="flex-1">
+                  <div className="flex border-b border-gray-300">
+                      <div className="w-20 bg-gray-50 p-1 text-center font-bold border-r border-gray-300">등록번호</div>
+                      <div className="flex-1 p-1 pl-2">{provider.registNo}</div>
+                      <div className="w-20 bg-gray-50 p-1 text-center font-bold border-x border-gray-300">상호</div>
+                      <div className="flex-1 p-1 pl-2">{provider.tradeName}</div>
+                  </div>
+                  <div className="flex"><div className="w-20 bg-gray-50 p-1 text-center font-bold border-r border-gray-300">주소</div><div className="flex-1 p-1 pl-2">{provider.address}</div></div>
+              </div>
+          </div>
+      </div>
+
+      {/* 테이블 */}
+      <table className="w-full text-xs border-collapse border border-black mb-4">
+        <thead>
+          <tr className="bg-gray-100 text-center h-9 font-bold">
+            <th className="border border-black w-12">월-일</th>
+            <th className="border border-black w-16">차량번호</th>
+            <th className="border border-black">현장</th>
+            <th className="border border-black w-24">품명</th>
+            <th className="border border-black w-12">수량</th>
+            <th className="border border-black w-24">공급가액</th>
+            <th className="border border-black w-24">합계</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredData.map((op: any, idx: number) => (
+            <tr key={idx} className="text-center h-8">
+              <td className="border border-black">{op.date?.slice(5)}</td>
+              <td className="border border-black">{op.vehicleNo}</td>
+              <td className="border border-black px-1">{op.destination}</td>
+              <td className="border border-black">{op.item}</td>
+              <td className="border border-black font-bold">{op.quantity}</td>
+              <td className="border border-black text-right px-2">{Math.floor(op.supplyPrice || 0).toLocaleString()}</td>
+              <td className="border border-black text-right px-2 font-bold">{Math.floor(op.totalAmount || 0).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+            <tr className="bg-gray-200 font-bold h-10 border-t-2 border-black">
+                <td colSpan={4} className="text-center border border-black">합 계</td>
+                <td className="text-center border border-black text-blue-700">{totals.qty.toLocaleString()}</td>
+                <td className="text-right px-2 border border-black">{totals.supply.toLocaleString()}</td>
+                <td className="text-right px-2 border border-black text-blue-700 text-sm">{totals.total.toLocaleString()}</td>
+            </tr>
+        </tfoot>
+      </table>
+      
+      <div className="mt-auto text-center text-gray-500 text-xs">
+          위와 같이 거래하였음을 확인합니다. (주)베라카
+      </div>
+    </div>
+  );
+};
+
+
+// ----------------------------------------------------------------------
+// 2. 메인 화면 부품 (StatementView)
+//    : 위에서 만든 StatementReport를 가져다 씁니다.
+// ----------------------------------------------------------------------
 interface Props {
   title: any;
   type: any;
@@ -101,10 +205,9 @@ const StatementView: React.FC<Props> = ({
   };
 
   return (
-    // 🔥 구조 단순화: flex-1 안에 overflow-auto를 넣어서 스크롤 문제 해결
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
       
-      {/* 왼쪽 메인 화면 (StatementReport 컴포넌트 사용) */}
+      {/* 1. 메인 문서 화면 */}
       <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
         <StatementReport 
           reportRef={componentRef}
@@ -118,14 +221,13 @@ const StatementView: React.FC<Props> = ({
         />
       </div>
 
-      {/* 오른쪽 사이드바 */}
+      {/* 2. 오른쪽 사이드바 */}
       <div className="w-80 bg-white border-l border-slate-300 p-6 flex flex-col gap-6 shadow-2xl z-20 shrink-0 h-full no-print">
         <div className="pb-4 border-b border-slate-200">
             <h2 className="text-xl font-black text-slate-800 mb-1">검색 옵션</h2>
             <p className="text-xs text-slate-500 text-blue-600 font-bold">시스템 정상화 완료</p>
         </div>
         
-        {/* 입력폼들 */}
         <div className="space-y-1 mt-4">
           <label className="text-xs font-bold text-slate-500">기간</label>
           <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full border border-slate-300 rounded p-2 mb-2"/>
@@ -148,7 +250,6 @@ const StatementView: React.FC<Props> = ({
           🖨️ 인쇄하기
         </button>
       </div>
-
     </div>
   );
 };
