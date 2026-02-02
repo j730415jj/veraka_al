@@ -3,7 +3,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 
-// 1. 타입을 any로 퉁쳐서 서버 에러 원천 봉쇄
 interface Props {
   title: any;
   type: any;
@@ -88,9 +87,17 @@ const StatementView: React.FC<Props> = ({
     return ['전체', ...new Set(sites)];
   }, [operations]);
 
+  // 🔥 핵심 수정: <style> 태그를 JSX에서 빼고, 여기 pageStyle로 옮김 (에러 원인 제거)
   const handlePrint = useReactToPrint({
     content: () => componentRef.current,
-    documentTitle: `명세서_${filterTarget}`,
+    documentTitle: `거래명세서_${filterTarget}`,
+    pageStyle: `
+      @page { size: A4; margin: 10mm; }
+      @media print {
+        body { -webkit-print-color-adjust: exact; }
+        .no-print { display: none !important; }
+      }
+    `
   });
 
   const provider = {
@@ -101,10 +108,11 @@ const StatementView: React.FC<Props> = ({
   };
 
   return (
-    <div className="flex h-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
+    // 🔥 레이아웃 구조 유지하되, 안전한 flex 구조로 정리
+    <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
       
       {/* 1. 메인 문서 화면 (왼쪽) */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
+      <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
         <div ref={componentRef} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
           
             {/* 제목 영역 */}
@@ -175,30 +183,32 @@ const StatementView: React.FC<Props> = ({
       </div>
 
       {/* 2. 오른쪽 사이드바 (검색창) */}
-      <div className="w-80 bg-white border-l border-slate-300 p-6 flex flex-col gap-6 shadow-2xl z-20 shrink-0 no-print">
+      <div className="w-80 bg-white border-l border-slate-300 p-6 flex flex-col gap-6 shadow-2xl z-20 shrink-0 h-full no-print">
         <div className="pb-4 border-b border-slate-200">
             <h2 className="text-xl font-black text-slate-800 mb-1">검색 옵션</h2>
-            <p className="text-xs text-slate-500">우측 사이드바 적용 완료</p>
+            <p className="text-xs text-slate-500 text-blue-600 font-bold">시스템 정상화 완료</p>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 mt-4">
           <label className="text-xs font-bold text-slate-500">기간</label>
           <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full border border-slate-300 rounded p-2 mb-2"/>
           <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full border border-slate-300 rounded p-2"/>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 mt-4">
           <label className="text-xs font-bold text-slate-500">대상 선택</label>
           <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="w-full border-2 border-blue-500 rounded p-3 font-bold text-lg">
              {type === 'vehicle' ? vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo}</option>) : clients.map(c => <option key={c.id} value={c.clientName}>{c.clientName}</option>)}
           </select>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 mt-4">
           <label className="text-xs font-bold text-slate-500">현장 선택</label>
           <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="w-full border border-slate-300 rounded p-2">
             <option value="전체">전체</option>
             {siteList.map((s, i) => <option key={i} value={s}>{s}</option>)}
           </select>
         </div>
-        <button onClick={handlePrint} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold mt-auto">인쇄하기</button>
+        <button onClick={handlePrint} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold mt-auto mb-4 hover:bg-blue-700 shadow-lg transition-all">
+          🖨️ 인쇄하기
+        </button>
       </div>
 
     </div>
