@@ -1,7 +1,12 @@
 // @ts-nocheck
 /* eslint-disable */
-import React from 'react';
+import React, { forwardRef } from 'react';
 
+// ----------------------------------------------------------------------
+// 1. 인쇄용 명세서 부품 (StatementReport)
+//    : forwardRef로 감싸서 인쇄 기능이 이 컴포넌트 내부의 div를 
+//      확실하게 잡을 수 있게 수정함 (에러 해결 핵심)
+// ----------------------------------------------------------------------
 interface ReportProps {
   title: string;
   filterTarget: string;
@@ -10,22 +15,23 @@ interface ReportProps {
   provider: any;
   filteredData: any[];
   totals: any;
-  reportRef?: React.RefObject<HTMLDivElement>;
+  // reportRef는 제거됨 (forwardRef로 대체)
 }
 
-const StatementReport: React.FC<ReportProps> = ({
+// 🔥 핵심 수정: 컴포넌트를 forwardRef로 감쌈
+const StatementReport = forwardRef<HTMLDivElement, ReportProps>(({
   title,
   filterTarget,
   filterStartDate,
   filterEndDate,
   provider,
   filteredData,
-  totals,
-  reportRef
-}) => {
+  totals
+}, ref) => {
   return (
-    <div ref={reportRef} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
-      {/* 제목 영역 */}
+    // 🔥 ref를 여기서 직접 연결
+    <div ref={ref} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
+      {/* 제목 */}
       <div className="flex justify-between items-end mb-8 border-b-2 border-black pb-4">
         <div>
            <h1 className="text-4xl font-black text-black mb-4 tracking-wider">{title}</h1>
@@ -70,7 +76,8 @@ const StatementReport: React.FC<ReportProps> = ({
         <tbody>
           {filteredData.map((op: any, idx: number) => (
             <tr key={idx} className="text-center h-8">
-              <td className="border border-black">{op.date?.slice(5)}</td>
+              {/* 날짜 방어 코드 유지 */}
+              <td className="border border-black">{op.date ? op.date.slice(5) : ''}</td>
               <td className="border border-black">{op.vehicleNo}</td>
               <td className="border border-black px-1">{op.destination}</td>
               <td className="border border-black">{op.item}</td>
@@ -95,6 +102,7 @@ const StatementReport: React.FC<ReportProps> = ({
       </div>
     </div>
   );
-};
+});
 
+StatementReport.displayName = 'StatementReport'; // 디버깅용 이름
 export default StatementReport;
