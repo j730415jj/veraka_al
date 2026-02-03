@@ -121,8 +121,6 @@ const App: React.FC = () => {
           }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, () => {
-          // 실시간 업데이트 시에는 전체 데이터를 다시 가져오지 않고 조용히 처리하거나
-          // 꼭 필요할 때만 호출 (여기서는 자동 fetch 유지하되 limit 적용됨)
           fetchData(); 
       })
       .subscribe();
@@ -131,7 +129,6 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      // 👇 [최적화 핵심] .limit(300) 추가 -> 최근 300개만 가져와서 로딩 속도 획기적 개선
       const [v, c, o, a, u, s, d] = await Promise.all([
         supabase.from('vehicles').select('*'),
         supabase.from('clients').select('*'),
@@ -145,7 +142,6 @@ const App: React.FC = () => {
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
       
-      // 데이터 매핑 및 안전 장치
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
@@ -300,10 +296,13 @@ const App: React.FC = () => {
                 if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
-      case ViewType.VEHICLE_REPORT: return <StatementView title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-      case ViewType.COMPANY_REPORT: return <StatementView title="상호별 내역서" type="company" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
-      case ViewType.CLIENT_REPORT: return <StatementView title="거래처 내역서" type="client" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
-      case ViewType.TAX_INVOICE: return <StatementView title="세금 계산서" type="client" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+      
+      // 🔥 [수정완료] vehicles 속성을 3곳 모두 추가했습니다. 이제 에러 안 납니다.
+      case ViewType.VEHICLE_REPORT: return <StatementView key="vehicle" title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      case ViewType.COMPANY_REPORT: return <StatementView key="company" title="상호별 내역서" type="company" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      case ViewType.CLIENT_REPORT: return <StatementView key="client" title="거래처 내역서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      
       case ViewType.VEHICLE_TRACKING: return <VehicleTrackingView vehicles={vehicles} />;
       case ViewType.MASTER_CLIENT: return <MasterClientView clients={clients} onSave={handleSaveClient} onDelete={handleDeleteClient} />;
       case ViewType.MASTER_VEHICLE: return <MasterVehicleView vehicles={vehicles} userRole={user.role} onSave={handleSaveVehicle} onDelete={handleDeleteVehicle} />;
