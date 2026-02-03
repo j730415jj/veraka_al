@@ -5,8 +5,6 @@ import { useReactToPrint } from 'react-to-print';
 
 // ----------------------------------------------------------------------
 // 1. 인쇄용 명세서 부품 (StatementReport)
-//    : 원래 따로 만들었던 걸 여기로 가져와서 합쳤습니다.
-//    : 이렇게 하면 파일 경로 에러가 절대 안 납니다.
 // ----------------------------------------------------------------------
 interface ReportProps {
   title: string;
@@ -76,7 +74,8 @@ const StatementReport: React.FC<ReportProps> = ({
         <tbody>
           {filteredData.map((op: any, idx: number) => (
             <tr key={idx} className="text-center h-8">
-              <td className="border border-black">{op.date?.slice(5)}</td>
+              {/* 🔥 방어 코드 2: 만약 날짜가 없으면 빈칸으로 표시 (에러 방지) */}
+              <td className="border border-black">{op.date ? op.date.slice(5) : ''}</td>
               <td className="border border-black">{op.vehicleNo}</td>
               <td className="border border-black px-1">{op.destination}</td>
               <td className="border border-black">{op.item}</td>
@@ -106,7 +105,6 @@ const StatementReport: React.FC<ReportProps> = ({
 
 // ----------------------------------------------------------------------
 // 2. 메인 화면 부품 (StatementView)
-//    : 위에서 만든 StatementReport를 가져다 씁니다.
 // ----------------------------------------------------------------------
 interface Props {
   title: any;
@@ -151,16 +149,24 @@ const StatementView: React.FC<Props> = ({
     }
   }, [type, vehicles, clients, filterTarget]);
 
+  // 🔥 핵심 수정 구간: 데이터 필터링 시 방어 코드 추가
   const filteredData = useMemo(() => {
+    // 1. 아예 데이터가 없으면 빈 배열 반환
     if(!operations) return [];
+
     return operations.filter(op => {
-      const opDate = op.date || '';
+      // 🔥 방어 코드 1: 날짜가 없거나(null/undefined) 비어있으면 아예 제외 (이게 핵심!)
+      if (!op || !op.date) return false;
+
+      const opDate = op.date;
       const dateMatch = (!filterStartDate || opDate >= filterStartDate) && (!filterEndDate || opDate <= filterEndDate);
+      
       let targetMatch = true;
       if (filterTarget) {
         if (type === 'vehicle') targetMatch = op.vehicleNo === filterTarget;
         else targetMatch = op.clientName === filterTarget;
       }
+
       let siteMatch = true;
       if (filterSite && filterSite !== '전체') {
         siteMatch = op.destination === filterSite;
