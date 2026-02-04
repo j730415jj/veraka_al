@@ -1,11 +1,108 @@
 // @ts-nocheck
 /* eslint-disable */
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, forwardRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import StatementReport from './StatementReport'; // 위에서 수정한 파일 import
 
 // ----------------------------------------------------------------------
-// 2. 메인 화면 부품
+// 1. 인쇄용 명세서 부품 (StatementReport) - 내부 선언 (파일 합침)
+// ----------------------------------------------------------------------
+interface ReportProps {
+  title: string;
+  filterTarget: string;
+  filterStartDate: string;
+  filterEndDate: string;
+  provider: any;
+  filteredData: any[];
+  totals: any;
+}
+
+// 🔥 forwardRef 적용 (인쇄 기능 필수)
+const StatementReport = forwardRef<HTMLDivElement, ReportProps>(({
+  title,
+  filterTarget,
+  filterStartDate,
+  filterEndDate,
+  provider,
+  filteredData,
+  totals
+}, ref) => {
+  return (
+    <div ref={ref} className="bg-white text-black w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl relative box-border flex flex-col">
+      {/* 제목 */}
+      <div className="flex justify-between items-end mb-8 border-b-2 border-black pb-4">
+        <div>
+           <h1 className="text-4xl font-black text-black mb-4 tracking-wider">{title}</h1>
+           <div className="text-3xl font-bold text-blue-800 underline decoration-4 underline-offset-8">
+             {filterTarget} <span className="text-xl text-black no-underline font-normal">귀하</span>
+           </div>
+        </div>
+        <div className="text-right text-sm text-gray-500">
+           기간: {filterStartDate} ~ {filterEndDate}
+        </div>
+      </div>
+
+      {/* 공급자 정보 */}
+      <div className="mb-6 border border-black text-sm">
+          <div className="flex border-b border-black">
+              <div className="w-24 bg-gray-100 font-bold p-2 text-center border-r border-black flex items-center justify-center">공급자</div>
+              <div className="flex-1">
+                  <div className="flex border-b border-gray-300">
+                      <div className="w-20 bg-gray-50 p-1 text-center font-bold border-r border-gray-300">등록번호</div>
+                      <div className="flex-1 p-1 pl-2">{provider.registNo}</div>
+                      <div className="w-20 bg-gray-50 p-1 text-center font-bold border-x border-gray-300">상호</div>
+                      <div className="flex-1 p-1 pl-2">{provider.tradeName}</div>
+                  </div>
+                  <div className="flex"><div className="w-20 bg-gray-50 p-1 text-center font-bold border-r border-gray-300">주소</div><div className="flex-1 p-1 pl-2">{provider.address}</div></div>
+              </div>
+          </div>
+      </div>
+
+      {/* 테이블 */}
+      <table className="w-full text-xs border-collapse border border-black mb-4">
+        <thead>
+          <tr className="bg-gray-100 text-center h-9 font-bold">
+            <th className="border border-black w-12">월-일</th>
+            <th className="border border-black w-16">차량번호</th>
+            <th className="border border-black">현장</th>
+            <th className="border border-black w-24">품명</th>
+            <th className="border border-black w-12">수량</th>
+            <th className="border border-black w-24">공급가액</th>
+            <th className="border border-black w-24">합계</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredData.map((op: any, idx: number) => (
+            <tr key={idx} className="text-center h-8">
+              <td className="border border-black">{op.date ? op.date.slice(5) : ''}</td>
+              <td className="border border-black">{op.vehicleNo}</td>
+              <td className="border border-black px-1">{op.destination}</td>
+              <td className="border border-black">{op.item}</td>
+              <td className="border border-black font-bold">{op.quantity}</td>
+              <td className="border border-black text-right px-2">{Math.floor(op.supplyPrice || 0).toLocaleString()}</td>
+              <td className="border border-black text-right px-2 font-bold">{Math.floor(op.totalAmount || 0).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+            <tr className="bg-gray-200 font-bold h-10 border-t-2 border-black">
+                <td colSpan={4} className="text-center border border-black">합 계</td>
+                <td className="text-center border border-black text-blue-700">{totals.qty.toLocaleString()}</td>
+                <td className="text-right px-2 border border-black">{totals.supply.toLocaleString()}</td>
+                <td className="text-right px-2 border border-black text-blue-700 text-sm">{totals.total.toLocaleString()}</td>
+            </tr>
+        </tfoot>
+      </table>
+      
+      <div className="mt-auto text-center text-gray-500 text-xs">
+          위와 같이 거래하였음을 확인합니다. (주)베라카
+      </div>
+    </div>
+  );
+});
+StatementReport.displayName = 'StatementReport';
+
+// ----------------------------------------------------------------------
+// 2. 메인 화면 부품 (StatementView)
 // ----------------------------------------------------------------------
 interface Props {
   title: any;
@@ -50,30 +147,24 @@ const StatementView: React.FC<Props> = ({
     }
   }, [type, vehicles, clients, filterTarget]);
 
-  // 🔥 핵심 수정 1: siteList 중복 제거 로직 개선 (에러 방지)
+  // 중복 제거 로직 (에러 방지)
   const siteList = useMemo(() => {
     if(!operations) return [];
-    // '전체'를 배열에 포함시키지 않고 순수 데이터만 추출
     return Array.from(new Set(operations.map(op => op.destination).filter(Boolean)));
   }, [operations]);
 
   const filteredData = useMemo(() => {
     if(!operations) return [];
-    
     return operations.filter(op => {
       if (!op || !op.date) return false;
-
       const opDate = op.date;
       const dateMatch = (!filterStartDate || opDate >= filterStartDate) && (!filterEndDate || opDate <= filterEndDate);
-      
       let targetMatch = true;
       if (filterTarget) {
         if (type === 'vehicle') targetMatch = op.vehicleNo === filterTarget;
         else targetMatch = op.clientName === filterTarget;
       }
-
       let siteMatch = true;
-      // 🔥 '전체' 필터링 로직 수정
       if (filterSite && filterSite !== '전체') {
         siteMatch = op.destination === filterSite;
       }
@@ -111,9 +202,7 @@ const StatementView: React.FC<Props> = ({
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
-      
       <div className="flex-1 h-full overflow-y-auto custom-scrollbar p-8 flex justify-center bg-gray-200 dark:bg-slate-900/50">
-        {/* 🔥 핵심 수정 2: ref={componentRef} 로 직접 전달 (기존 reportRef 삭제) */}
         <StatementReport 
           ref={componentRef}
           title={title}
@@ -146,7 +235,6 @@ const StatementView: React.FC<Props> = ({
         <div className="space-y-1 mt-4">
           <label className="text-xs font-bold text-slate-500">현장 선택</label>
           <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="w-full border border-slate-300 rounded p-2">
-            {/* 🔥 핵심 수정 3: '전체' 옵션을 하드코딩하고, map에서는 순수 데이터만 출력 (중복 방지) */}
             <option value="전체">전체</option>
             {siteList.map((s, i) => <option key={i} value={s}>{s}</option>)}
           </select>
