@@ -1,7 +1,7 @@
 // @ts-nocheck
 /* eslint-disable */
 import React, { useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabase';
 
 interface Props {
   onLogin: (role: string, identifier: string) => void;
