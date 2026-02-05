@@ -1,4 +1,3 @@
-// components/CompanyTransactionStatement.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Printer, FileSpreadsheet, Copy, Check } from 'lucide-react';
 import { Operation, Client } from '../types';
@@ -6,9 +5,11 @@ import { Operation, Client } from '../types';
 interface Props {
   operations: Operation[];
   clients: Client[];
+  userRole?: string;       // 🔥 [추가] 권한 확인용
+  userIdentifier?: string; // 🔥 [추가] 업체명 확인용
 }
 
-export default function CompanyTransactionStatement({ operations, clients }: Props) {
+export default function CompanyTransactionStatement({ operations, clients, userRole, userIdentifier }: Props) {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -17,22 +18,38 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
   const [endDate, setEndDate] = useState(lastDay);
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
+  
+  // 🔥 [핵심 추가] 매출(받을돈)/매입(줄돈) 구분 상태 (기본값: SALES)
+  const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
 
+  // 🔥 [수정] 권한에 따라 초기 거래처 선택 로직 변경
   useEffect(() => {
-    if (clients.length > 0 && !selectedClientName) {
+    if (userRole === 'PARTNER' && userIdentifier) {
+      // 업체 로그인 시: 무조건 자기 이름으로 고정
+      setSelectedClientName(userIdentifier);
+    } else if (clients.length > 0 && !selectedClientName) {
+      // 관리자 로그인 시: 첫 번째 업체 자동 선택
       setSelectedClientName(clients[0].clientName);
     }
-  }, [clients, selectedClientName]);
+  }, [clients, userRole, userIdentifier, selectedClientName]);
 
   const filteredData = useMemo(() => {
     return operations.filter(op => {
       if (!op.date) return false;
       const opDate = op.date.split('T')[0];
       const isDateMatch = opDate >= startDate && opDate <= endDate;
+      
+      // 1. 거래처 일치 확인 (관리자는 전체 조회 가능, 업체는 자기 것만)
       const isClientMatch = selectedClientName === '전체' || op.clientName === selectedClientName;
-      return isDateMatch && isClientMatch;
+
+      // 2. 🔥 [추가] 매출/매입 타입 확인
+      // DB에 type이 없으면 기본적으로 'SALES'로 간주 (기존 데이터 호환성)
+      const opType = op.type || 'SALES';
+      const isTypeMatch = opType === viewType;
+
+      return isDateMatch && isClientMatch && isTypeMatch;
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [operations, startDate, endDate, selectedClientName]);
+  }, [operations, startDate, endDate, selectedClientName, viewType]);
 
   const totalQty = filteredData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const totalSupply = filteredData.reduce((sum, item) => sum + (Number(item.supplyPrice) || 0), 0);
@@ -40,7 +57,8 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
   const handleDownloadExcel = () => {
-    const fileName = `${selectedClientName}_상호별거래내역서_${startDate}_${endDate}.xlsx`;
+    const typeText = viewType === 'SALES' ? '매출' : '매입';
+    const fileName = `${selectedClientName}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
     alert(`[엑셀 다운로드 요청]\n파일: ${fileName}\n데이터: ${filteredData.length}건`);
   };
 
@@ -61,12 +79,20 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
         <div className="bg-white shadow-lg p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
           
-          <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent">
-            상 호 별 거 래 명 세 서 ({parseInt(startDate.slice(5,7))}월)
+          {/* 🔥 [수정] 제목이 매출/매입에 따라 바뀜 */}
+          <h1 className={`text-3xl font-extrabold text-center mb-6 tracking-widest py-2 border-b-2 border-black print:bg-transparent ${viewType === 'SALES' ? 'bg-blue-50 text-blue-900' : 'bg-green-50 text-green-900'}`}>
+            {viewType === 'SALES' ? '거 래 명 세 서 (매 출)' : '거 래 명 세 서 (매 입)'}
+            <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
 
           <div className="flex justify-between items-start mb-4">
-            <div className="flex flex-col justify-end h-full"><h2 className="text-3xl font-bold tracking-tighter">{selectedClientName} 귀하</h2></div>
+            <div className="flex flex-col justify-end h-full">
+              <h2 className="text-3xl font-bold tracking-tighter">{selectedClientName} 귀하</h2>
+              {/* 🔥 [추가] 안내 문구 */}
+              <p className="text-xs text-gray-500 mt-1">
+                {viewType === 'SALES' ? '※ 당사가 귀하에게 청구하는 내역입니다.' : '※ 당사가 귀하에게 지급할 내역입니다.'}
+              </p>
+            </div>
             <div className="w-[55%]">
                <div className="text-right mb-1 text-lg font-bold">장 국 용 귀하</div>
                <table className="w-full border-collapse border-2 border-black text-xs">
@@ -82,14 +108,18 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
           <div className="flex border-2 border-black mb-1 text-sm">
             <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100"><span>공급가액</span><span>세 액</span></div>
             <div className="w-1/4 border-r border-black p-1 text-right flex flex-col justify-center px-2 font-bold"><span>{totalSupply.toLocaleString()}</span><span>{totalTax.toLocaleString()}</span></div>
-            <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">청구 금액</div>
-            <div className="w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold bg-blue-100 text-blue-800 print:bg-transparent">{grandTotal.toLocaleString()}</div>
+            <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">
+              {viewType === 'SALES' ? '청구 금액' : '지급 금액'}
+            </div>
+            <div className={`w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold print:bg-transparent ${viewType === 'SALES' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+              {grandTotal.toLocaleString()}
+            </div>
           </div>
 
           <div className="w-full mb-1">
             <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
               <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
-              <thead className="bg-gray-100 font-bold print:bg-gray-100">
+              <thead className={`font-bold print:bg-gray-100 ${viewType === 'SALES' ? 'bg-blue-100' : 'bg-green-100'}`}>
                 <tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">상차지</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr>
               </thead>
               <tbody>
@@ -111,14 +141,26 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
                 ))}
               </tbody>
               <tfoot className="font-bold border-t-2 border-black">
-                <tr className="bg-blue-100 print:bg-transparent"><td className="border border-black py-1" colSpan={6}>합 계</td><td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td><td className="border border-black py-1 text-right px-1">{totalTax.toLocaleString()}</td><td className="border border-black py-1 text-right px-1 text-base text-blue-800">{grandTotal.toLocaleString()}</td></tr>
+                <tr className={`${viewType === 'SALES' ? 'bg-blue-50' : 'bg-green-50'} print:bg-transparent`}>
+                  <td className="border border-black py-1" colSpan={6}>합 계</td>
+                  <td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td>
+                  <td className="border border-black py-1 text-right px-1">{totalTax.toLocaleString()}</td>
+                  <td className="border border-black py-1 text-right px-1 text-base text-black">{grandTotal.toLocaleString()}</td>
+                </tr>
               </tfoot>
             </table>
           </div>
 
           <div className="flex justify-end mt-4">
              <table className="w-[300px] border-collapse border border-black text-sm print:bg-transparent">
-              <tbody><tr className="border-t-2 border-black"><td className="border border-black p-2 text-center font-extrabold bg-blue-100 print:bg-gray-100">청 구 금 액</td><td className="border border-black p-2 text-right px-2 text-lg font-extrabold text-blue-800">{grandTotal.toLocaleString()}</td></tr></tbody>
+              <tbody><tr className="border-t-2 border-black">
+                <td className={`border border-black p-2 text-center font-extrabold ${viewType === 'SALES' ? 'bg-blue-100' : 'bg-green-100'} print:bg-gray-100`}>
+                  {viewType === 'SALES' ? '청 구 금 액' : '지 급 금 액'}
+                </td>
+                <td className={`border border-black p-2 text-right px-2 text-lg font-extrabold ${viewType === 'SALES' ? 'text-blue-800' : 'text-green-800'}`}>
+                  {grandTotal.toLocaleString()}
+                </td>
+              </tr></tbody>
             </table>
           </div>
 
@@ -132,9 +174,43 @@ export default function CompanyTransactionStatement({ operations, clients }: Pro
       <div className="w-full xl:w-72 flex-shrink-0 print:hidden">
         <div className="bg-white rounded-lg shadow-md p-4 sticky top-4 border border-gray-200">
           <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2"><Search className="w-4 h-4 text-blue-600" />내역서 설정</h2>
+          
+          {/* 🔥 [추가] 매출/매입 전환 버튼 */}
+          <div className="bg-gray-100 p-2 rounded-lg mb-4">
+            <label className="text-xs font-bold text-gray-500 mb-2 block">내역 구분</label>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setViewType('SALES')}
+                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}
+              >
+                매출 (받을 돈)
+              </button>
+              <button 
+                onClick={() => setViewType('PURCHASE')}
+                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}
+              >
+                매입 (줄 돈)
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-4">
             <div className="space-y-2"><label className="text-xs font-bold text-gray-700">조회 기간</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 border rounded text-xs" /><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 border rounded text-xs" /></div>
-            <div className="space-y-2"><label className="text-xs font-bold text-gray-700">거래처(상호) 선택</label><select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} className="w-full p-2 border rounded text-base font-bold text-blue-800"><option value="전체">전체 거래처</option>{clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}</select></div>
+            
+            {/* 🔥 [수정] 거래처 선택 (업체는 비활성화) */}
+            <div className="space-y-2">
+               <label className="text-xs font-bold text-gray-700">거래처(상호)</label>
+               <select 
+                value={selectedClientName} 
+                onChange={(e) => setSelectedClientName(e.target.value)} 
+                disabled={userRole === 'PARTNER'} 
+                className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}
+              >
+                {userRole === 'ADMIN' && <option value="전체">전체 거래처</option>}
+                {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
+              </select>
+            </div>
+
             <hr className="border-gray-200 my-2" />
             <div className="space-y-2"><button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"><FileSpreadsheet className="w-4 h-4" />엑셀로 추출하기</button><div className="grid grid-cols-2 gap-2"><button onClick={handleCopy} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'}`}>{isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{isCopied ? '완료' : '내용 복사'}</button><button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"><Printer className="w-3 h-3" />인쇄</button></div></div>
           </div>

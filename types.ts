@@ -55,9 +55,11 @@ export interface Operation {
   itemDescription?: string;
   isVatIncluded?: boolean;
   isInvoiceIssued?: boolean;
-  // 👇 [수정] DB와 앱 양쪽 호환을 위해 둘 다 허용
+  // 👇 DB와 앱 양쪽 호환을 위해 둘 다 허용
   invoicePhoto?: string;
   invoice_photo?: string;
+  // 🔥 [추가] 매출(SALES) / 매입(PURCHASE) 구분
+  type?: 'SALES' | 'PURCHASE'; 
 }
 
 export interface Dispatch {
@@ -71,6 +73,10 @@ export interface Dispatch {
   remarks?: string;
   status: 'pending' | 'sent' | 'completed';
   count?: number; 
+  // 🔥 [추가] 배차 시 매출/매입 구분
+  type?: 'SALES' | 'PURCHASE';
+  // 🔥 [추가] 관리자가 올린 송장 사진 (배차 단계에서 저장될 경우)
+  invoicePhoto?: string;
 }
 
 export interface AdminAccount {
@@ -78,7 +84,7 @@ export interface AdminAccount {
   username: string;
   password?: string;
   name: string;
-  role?: 'ADMIN'; // 👇 선택 속성으로 변경하여 에러 방지
+  role?: 'ADMIN'; 
 }
 
 export interface UnitPriceMaster {
@@ -110,7 +116,7 @@ export interface PartnerAccount {
     name: string;
     clientName: string;
     phone?: string;
-    role?: 'PARTNER'; // 👇 선택 속성으로 변경하여 에러 방지
+    role?: 'PARTNER'; 
 }
 
 export enum ViewType {
