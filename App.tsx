@@ -18,6 +18,9 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
+// 🔥 [수정 1] 새로 만든 파일 import 추가
+import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
+
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
@@ -297,8 +300,10 @@ const App: React.FC = () => {
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
       
-      // 🔥 [수정완료] vehicles 속성을 3곳 모두 추가했습니다. 이제 에러 안 납니다.
-      case ViewType.VEHICLE_REPORT: return <StatementView key="vehicle" title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      // 🔥 [수정 2] 차량거래 내역서를 방금 만든 '새 컴포넌트(엑셀 디자인)'로 교체!
+      case ViewType.VEHICLE_REPORT: 
+        return <VehicleTransactionStatementNew />;
+        
       case ViewType.COMPANY_REPORT: return <StatementView key="company" title="상호별 내역서" type="company" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.CLIENT_REPORT: return <StatementView key="client" title="거래처 내역서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
