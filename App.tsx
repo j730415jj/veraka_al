@@ -18,8 +18,9 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-// 🔥 [수정 1] 새로 만든 파일 import 추가
+// 🔥 [수정 1] 새로 만든 파일 2개 import (차량용, 거래처용)
 import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
+import CompanyTransactionStatement from './components/CompanyTransactionStatement';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -300,11 +301,14 @@ const App: React.FC = () => {
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
       
-      // 🔥 [수정 2] 차량거래 내역서를 방금 만든 '새 컴포넌트(엑셀 디자인)'로 교체!
+      // 🔥 [수정 2] 차량거래 내역서 연결 (데이터 props 전달 포함)
       case ViewType.VEHICLE_REPORT: 
-        return <VehicleTransactionStatementNew />;
+        return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
         
-      case ViewType.COMPANY_REPORT: return <StatementView key="company" title="상호별 내역서" type="company" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      // 🔥 [수정 3] 상호별(거래처) 내역서 연결 (데이터 props 전달 포함)
+      case ViewType.COMPANY_REPORT: 
+        return <CompanyTransactionStatement operations={filteredOps} clients={clients} />;
+        
       case ViewType.CLIENT_REPORT: return <StatementView key="client" title="거래처 내역서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       
