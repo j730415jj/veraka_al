@@ -5,8 +5,8 @@ import { Operation, Client } from '../types';
 interface Props {
   operations: Operation[];
   clients: Client[];
-  userRole?: string;       // 권한 확인용 (필요시)
-  userIdentifier?: string; // 업체명 확인용 (필요시)
+  userRole?: string;       // 권한 확인용
+  userIdentifier?: string; // 업체명 확인용
 }
 
 export default function ClientTransactionStatement({ operations, clients, userRole, userIdentifier }: Props) {
@@ -19,7 +19,7 @@ export default function ClientTransactionStatement({ operations, clients, userRo
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
   
-  // 🔥 [추가] 지점 선택 상태 & 매출/매입 구분
+  // 지점 선택 상태 & 매출/매입 구분
   const [selectedBranch, setSelectedBranch] = useState<string>('전체'); 
   const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
 
@@ -30,7 +30,7 @@ export default function ClientTransactionStatement({ operations, clients, userRo
     }
   }, [clients, selectedClientName]);
 
-  // 🔥 [추가] 선택된 거래처의 지점 목록 가져오기
+  // 선택된 거래처의 지점 목록 가져오기
   const availableBranches = useMemo(() => {
     const client = clients.find(c => c.clientName === selectedClientName);
     return client?.branches || [];
@@ -48,7 +48,7 @@ export default function ClientTransactionStatement({ operations, clients, userRo
       const isDateMatch = opDate >= startDate && opDate <= endDate;
       const isClientMatch = selectedClientName === '전체' || op.clientName === selectedClientName;
       
-      // 🔥 [추가] 지점 필터링 & 타입 필터링
+      // 지점 필터링 & 타입 필터링
       const isBranchMatch = selectedBranch === '전체' || op.branchName === selectedBranch;
       const opType = op.type || 'SALES';
       const isTypeMatch = opType === viewType;
@@ -131,7 +131,6 @@ export default function ClientTransactionStatement({ operations, clients, userRo
                     <tr key={row.id}>
                       <td className="border border-black py-0.5">{row.date.split('T')[0].slice(5)}</td>
                       <td className="border border-black py-0.5 truncate">
-                        {/* 🔥 [추가] 지점명 표시 */}
                         {row.branchName ? <span className="font-bold text-blue-600">[{row.branchName}]</span> : ''} {row.origin}
                       </td>
                       <td className="border border-black py-0.5 truncate">{row.destination}</td>
@@ -211,10 +210,9 @@ export default function ClientTransactionStatement({ operations, clients, userRo
               </select>
             </div>
 
-            {/* 🔥 [추가] 지점 선택 (지점이 있을 때만 보임) */}
             {availableBranches.length > 0 && (
               <div className="space-y-2 bg-blue-50 p-2 rounded border border-blue-100">
-                 <label className="text-xs font-bold text-blue-700 flex items-center gap-1">📍 지점 선택 (옵션)</label>
+                 <label className="text-xs font-bold text-blue-700 flex items-center gap-1"><Check className="w-3 h-3"/> 지점 선택 (옵션)</label>
                  <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="w-full p-2 border rounded text-sm font-bold text-slate-700 bg-white">
                   <option value="전체">전체 지점 합산</option>
                   {availableBranches.map((branch, idx) => (<option key={idx} value={branch}>{branch}</option>))}

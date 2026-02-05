@@ -18,9 +18,10 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-// 🔥 [수정 1] 새로 만든 파일 2개 import (차량용, 거래처용)
+// 🔥 [수정 1] 내역서 컴포넌트 3총사 Import (새로 만든 파일들 연결)
 import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
 import CompanyTransactionStatement from './components/CompanyTransactionStatement';
+import ClientTransactionStatement from './components/ClientTransactionStatement'; // 👈 방금 만든 파일 추가!
 
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -94,7 +95,8 @@ const App: React.FC = () => {
             id: d.id, date: d.date, clientName: d.client_name, 
             vehicleNo: safeVehicleNo,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
-            remarks: d.remarks, status: d.status
+            remarks: d.remarks, status: d.status,
+            type: d.type // 매출/매입 타입
           });
 
           if (payload.eventType === 'INSERT') {
@@ -144,7 +146,7 @@ const App: React.FC = () => {
       ]);
 
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
-      if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type })));
+      if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type, branches: x.branches })));
       
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
@@ -165,7 +167,8 @@ const App: React.FC = () => {
           destination: x.destination || '',
           item: x.item || '',
           quantity: x.quantity || 0,
-          remarks: x.remarks || ''
+          remarks: x.remarks || '',
+          type: x.type || 'SALES' // 매출/매입 타입
       })));
       
       if (a.data) setAdminAccounts(a.data);
@@ -176,7 +179,8 @@ const App: React.FC = () => {
           id: x.id, date: x.date, clientName: x.client_name, 
           vehicleNo: x.vehicle_no || x.vehicleNo || '', 
           origin: x.origin, destination: x.destination, item: x.item, 
-          count: x.count, remarks: x.remarks, status: x.status 
+          count: x.count, remarks: x.remarks, status: x.status,
+          type: x.type || 'SALES' // 매출/매입 타입
       })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
@@ -227,7 +231,7 @@ const App: React.FC = () => {
   const handleAddOperation = async (op: Operation) => {
       setOperations(prev => [op, ...prev]); 
       const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
+          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type 
       };
       await supabase.from('operations').insert(dbData);
   };
@@ -235,7 +239,7 @@ const App: React.FC = () => {
   const handleUpdateOperation = async (op: Operation) => {
       setOperations(prev => prev.map(o => o.id === op.id ? op : o));
       const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo 
+        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type
       };
       await supabase.from('operations').update(dbData).eq('id', op.id);
   };
@@ -274,13 +278,13 @@ const App: React.FC = () => {
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
                 if (!d.vehicleNo) { alert('차량번호 누락!'); return; }
-                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
                  setDispatches(prev => prev.map(old => old.id === d.id ? d : old));
-                 const dbData = { date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count };
+                 const dbData = { date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').update(dbData).eq('id', d.id);
                 fetchData(); 
             }} 
@@ -301,17 +305,19 @@ const App: React.FC = () => {
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
       
-      // 🔥 [수정 2] 차량거래 내역서 연결 (데이터 props 전달 포함)
+      // 🔥 [수정 2] 차량거래 내역서 (완벽 연결)
       case ViewType.VEHICLE_REPORT: 
         return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
         
-      // 🔥 [수정 3] 상호별(거래처) 내역서 연결 (데이터 props 전달 포함)
+      // 🔥 [수정 3] 상호별(거래처) 내역서 (완벽 연결 - 권한 포함)
       case ViewType.COMPANY_REPORT: 
-        return <CompanyTransactionStatement operations={filteredOps} clients={clients} />;
-        
-      case ViewType.CLIENT_REPORT: return <StatementView key="client" title="거래처 내역서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+        return <CompanyTransactionStatement operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+
+      // 🔥 [수정 4] 거래처 내역서 (방금 만든 지점 기능 포함된 파일로 교체!)
+      case ViewType.CLIENT_REPORT: 
+        return <ClientTransactionStatement operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-      
       case ViewType.VEHICLE_TRACKING: return <VehicleTrackingView vehicles={vehicles} />;
       case ViewType.MASTER_CLIENT: return <MasterClientView clients={clients} onSave={handleSaveClient} onDelete={handleDeleteClient} />;
       case ViewType.MASTER_VEHICLE: return <MasterVehicleView vehicles={vehicles} userRole={user.role} onSave={handleSaveVehicle} onDelete={handleDeleteVehicle} />;
