@@ -1,108 +1,114 @@
-// @ts-nocheck
-/* eslint-disable */
 import React, { useState } from 'react';
-import { supabase } from '../supabase';
+import { Truck, Building2, ShieldCheck, User, Lock } from 'lucide-react'; // 아이콘 추가
 
 interface Props {
-  onLogin: (role: string, identifier: string) => void;
+  onLogin: (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => boolean;
 }
 
-const LoginView: React.FC<Props> = ({ onLogin }) => {
-  const [activeTab, setActiveTab] = useState<'vehicle' | 'partner' | 'admin'>('admin');
+export default function LoginView({ onLogin }: Props) {
+  const [activeTab, setActiveTab] = useState<'VEHICLE' | 'PARTNER' | 'ADMIN'>('VEHICLE');
   const [id, setId] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [pw, setPw] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    // [관리자 긴급 접속] 1111 입력 시 무조건 통과
-    if (activeTab === 'admin' && id === '1111') {
-        onLogin('ADMIN', '최고관리자');
-        return;
-    }
-
-    try {
-      if (activeTab === 'vehicle') {
-        const { data } = await supabase.from('vehicles').select('*').eq('vehicleNo', id).eq('password', password).single();
-        if (data) onLogin('VEHICLE', data.vehicleNo);
-        else setError('차량 정보를 찾을 수 없습니다.');
-      } 
-      else if (activeTab === 'partner') {
-        const { data } = await supabase.from('clients').select('*').eq('clientName', id).eq('password', password).single();
-        if (data) onLogin('PARTNER', data.clientName);
-        else setError('업체 정보를 찾을 수 없습니다.');
-      }
-      else if (activeTab === 'admin') {
-         const { data } = await supabase.from('snippets').select('*').eq('role', 'ADMIN').eq('username', id).eq('password', password).single();
-         if (data) onLogin('ADMIN', '최고관리자');
-         else setError('관리자 정보가 틀립니다.');
-      }
-    } catch (err) {
-      setError('오류가 발생했습니다.');
-    } finally {
-      setLoading(false);
+    if (!onLogin(id, pw, activeTab)) {
+      alert('로그인 정보가 올바르지 않습니다.');
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-md">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+      
+      {/* 메인 카드 */}
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[400px] overflow-hidden">
         
-        {/* 로고 영역 */}
-        <div className="bg-blue-600 p-8 text-center">
-          <div className="inline-block border-2 border-white px-4 py-2 rounded mb-4">
-             <h1 className="text-3xl font-black text-white tracking-normal">!!!간격수정완료!!!</h1>
-             <h2 className="text-sm font-bold text-white mt-1">BERAKAH SYSTEM</h2>
-          </div>
-          <p className="text-blue-100 font-bold text-lg">베라카 물류 정산시스템</p>
+        {/* 1. 헤더 (블루 그라데이션) */}
+        <div className="bg-gradient-to-b from-blue-700 to-blue-900 py-12 px-6 text-center">
+          <h1 className="text-3xl font-black text-white tracking-widest drop-shadow-md mb-2">
+            BERAKAH SYSTEM
+          </h1>
+          <p className="text-blue-200 text-sm font-medium tracking-wider opacity-90">
+            베라카 물류 정산시스템
+          </p>
         </div>
 
-        {/* 탭 버튼 */}
-        <div className="flex p-2 gap-2 bg-slate-50">
-          <button onClick={() => setActiveTab('vehicle')} className={`flex-1 py-3 text-sm font-bold rounded-xl ${activeTab === 'vehicle' ? 'bg-white text-blue-600 shadow' : 'text-slate-400'}`}>🚛 차량</button>
-          <button onClick={() => setActiveTab('partner')} className={`flex-1 py-3 text-sm font-bold rounded-xl ${activeTab === 'partner' ? 'bg-white text-blue-600 shadow' : 'text-slate-400'}`}>🏢 업체</button>
-          <button onClick={() => setActiveTab('admin')} className={`flex-1 py-3 text-sm font-bold rounded-xl ${activeTab === 'admin' ? 'bg-white text-blue-600 shadow' : 'text-slate-400'}`}>🛡️ 관리자</button>
+        {/* 2. 탭 버튼 (아이콘 포함) */}
+        <div className="flex border-b border-gray-100 p-2 bg-white">
+          <button 
+            onClick={() => setActiveTab('VEHICLE')} 
+            className={`flex-1 flex items-center justify-center gap-1 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'VEHICLE' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <Truck className="w-4 h-4" /> 차량
+          </button>
+          <button 
+            onClick={() => setActiveTab('PARTNER')} 
+            className={`flex-1 flex items-center justify-center gap-1 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'PARTNER' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <Building2 className="w-4 h-4" /> 업체
+          </button>
+          <button 
+            onClick={() => setActiveTab('ADMIN')} 
+            className={`flex-1 flex items-center justify-center gap-1 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'ADMIN' ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <ShieldCheck className="w-4 h-4" /> 관리자
+          </button>
         </div>
 
-        {/* 입력 폼 */}
-        <form onSubmit={handleLogin} className="p-8 space-y-6">
-          <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">
-                {activeTab === 'admin' ? '관리자 아이디 (1111)' : '아이디'}
-              </label>
-              {/* 여기 tracking-widest 삭제됨 */}
+        {/* 3. 입력 폼 */}
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+          
+          {/* 아이디 입력 */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 ml-1">
+              {activeTab === 'VEHICLE' ? '차량번호' : activeTab === 'PARTNER' ? '업체 아이디' : '관리자 아이디'}
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <User className="h-5 w-5 text-gray-400" />
+              </div>
               <input 
                 type="text" 
-                value={id}
-                onChange={(e) => setId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 outline-none tracking-normal placeholder:font-normal"
-                placeholder="입력하세요"
+                value={id} 
+                onChange={(e) => setId(e.target.value)} 
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-700 font-medium placeholder-gray-400"
+                placeholder={activeTab === 'VEHICLE' ? '차량번호 입력' : '아이디 입력'}
               />
+            </div>
           </div>
-          <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">비밀번호</label>
+
+          {/* 비밀번호 입력 */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 ml-1">비밀번호</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400" />
+              </div>
               <input 
                 type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 outline-none tracking-normal"
-                placeholder="••••"
+                value={pw} 
+                onChange={(e) => setPw(e.target.value)} 
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-700 font-medium placeholder-gray-400"
+                placeholder="비밀번호"
               />
+            </div>
           </div>
 
-          {error && <div className="bg-red-50 text-red-600 text-sm font-bold px-4 py-3 rounded-xl">⚠️ {error}</div>}
-
-          <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white py-4 rounded-xl text-lg font-bold shadow-lg hover:bg-black transition-all">
-            {loading ? '접속 중...' : '접속하기'}
+          {/* 접속하기 버튼 */}
+          <button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 transform transition active:scale-[0.98] mt-4 text-lg"
+          >
+            접속하기
           </button>
         </form>
       </div>
+
+      {/* 4. 하단 문의 문구 (요청하신 부분) */}
+      <p className="mt-8 text-white font-bold text-lg tracking-wide opacity-90 drop-shadow-md">
+        어플문의 010-2332-4332
+      </p>
+
     </div>
   );
-};
-
-export default LoginView;
+}
