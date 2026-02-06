@@ -89,7 +89,6 @@ const App: React.FC = () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // 🔥 [수정] 차량번호/거래처명 실시간 업데이트 시에도 확실하게 매핑
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
           const safeClientName = newD.client_name || newD.clientName || '';
 
@@ -151,13 +150,12 @@ const App: React.FC = () => {
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type, branches: x.branches })));
       
-      // 🔥 [핵심 수정] 운행기록 데이터 매핑 강화 (DB 컬럼명 -> 앱 변수명)
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
           date: x.date || '', 
-          clientName: x.client_name || x.clientName || '', // 여기!
-          vehicleNo: x.vehicle_no || x.vehicleNo || '',    // 여기!
+          clientName: x.client_name || x.clientName || '',
+          vehicleNo: x.vehicle_no || x.vehicleNo || '',
           unitPrice: x.unit_price || 0, 
           supplyPrice: x.supply_price || 0, 
           totalAmount: x.total_amount || 0, 
@@ -179,11 +177,10 @@ const App: React.FC = () => {
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
       
-      // 🔥 [핵심 수정] 배차 데이터 매핑 강화
       if (d.data) setDispatches(d.data.map((x:any) => ({ 
           id: x.id, date: x.date, 
-          clientName: x.client_name || x.clientName || '', // 여기!
-          vehicleNo: x.vehicle_no || x.vehicleNo || '',    // 여기!
+          clientName: x.client_name || x.clientName || '',
+          vehicleNo: x.vehicle_no || x.vehicleNo || '',
           origin: x.origin, destination: x.destination, item: x.item, 
           count: x.count, remarks: x.remarks, status: x.status,
           type: x.type || 'SALES'
@@ -314,10 +311,10 @@ const App: React.FC = () => {
       case ViewType.VEHICLE_REPORT: 
         return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
         
+      // 🔥 [수정] 둘 다 vehicles를 넘겨주도록 통일!
       case ViewType.COMPANY_REPORT: 
-        return <CompanyTransactionStatement operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
-      // 🔥 [핵심 수정] vehicles={vehicles} 를 넘겨주어야 차주명 표시가 가능함!
       case ViewType.CLIENT_REPORT: 
         return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 

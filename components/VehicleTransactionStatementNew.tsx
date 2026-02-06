@@ -51,9 +51,8 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
   // 엑셀 다운로드 (기능 시뮬레이션)
   const handleDownloadExcel = () => {
-    // 실제 엑셀 라이브러리(XLSX)가 있다면 여기서 데이터를 변환하여 다운로드
     const fileName = `${selectedVehicleNo}_차량거래내역서_${startDate}_${endDate}.xlsx`;
-    alert(`[엑셀 다운로드 요청]\n파일: ${fileName}\n데이터: ${filteredData.length}건\n\n* 실제 엑셀 변환 로직이 연결되면 파일이 다운로드됩니다.`);
+    alert(`[엑셀 다운로드 요청]\n파일: ${fileName}\n데이터: ${filteredData.length}건`);
   };
 
   // 복사 기능
@@ -75,12 +74,13 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
       {/* 📄 왼쪽: 내역서 (A4 스타일) */}
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
         <div 
-          className="bg-white shadow-lg p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none"
+          // 🔥 [수정] p-6 -> p-4 (여백 축소)
+          className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none"
           style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}
         >
           {/* 헤더 */}
-          <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent">
-            차 량 거 래 명 세 서 ({parseInt(startDate.slice(5,7))}월)
+          <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
+            차 량 거 래 명 세 서 <span className="text-lg ml-2 font-normal">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
 
           <div className="flex justify-between items-start mb-4">
