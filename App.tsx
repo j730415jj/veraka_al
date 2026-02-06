@@ -36,76 +36,53 @@ const App: React.FC = () => {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
-  // 🔥 [알람 강화] 소리 파일 준비
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<any>(null); // 화면 꺼짐 방지용
+  const wakeLockRef = useRef<any>(null); 
 
   useEffect(() => {
-    // 📢 1. 소리 파일 로드 (크고 잘 들리는 비프음)
+    // 1. 소리 파일 준비
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
 
-    // 📢 2. 브라우저 알림 권한 요청
+    // 2. 알림 권한 요청
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
     
-    // 📢 3. [중요] 기사님이 화면을 한 번이라도 터치하면 소리/화면켜짐 기능 활성화
+    // 3. 사용자 인터랙션 시 소리/화면켜짐 활성화
     const unlockAudioAndScreen = async () => {
-      // 소리 잠금 해제 (무음으로 한번 재생해서 브라우저 권한 획득)
       if(audioRef.current) {
-        audioRef.current.volume = 1.0; // 볼륨 최대
+        audioRef.current.volume = 1.0; 
         audioRef.current.play().then(() => {
           audioRef.current?.pause();
           audioRef.current!.currentTime = 0;
         }).catch(() => {});
       }
-
-      // 화면 꺼짐 방지 (Wake Lock)
-      try {
+      try { 
         if ('wakeLock' in navigator) {
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-          console.log("화면 꺼짐 방지 활성화됨");
         }
-      } catch (err) {
-        console.log("화면 제어 권한 없음 (무시 가능)");
-      }
-
-      // 이벤트 리스너 제거 (한 번만 실행하면 됨)
+      } catch (err) {}
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
-
     document.addEventListener('click', unlockAudioAndScreen);
     document.addEventListener('touchstart', unlockAudioAndScreen);
   }, []);
 
-  // 🔔 실제 알람 울리는 함수
   const playAlertSound = (title: string, body: string) => {
     try {
-      // 1. 소리 재생
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        const playPromise = audioRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.warn("소리 재생 실패 (사용자 인터랙션 필요):", error);
-          });
-        }
+      if (audioRef.current) { 
+        audioRef.current.currentTime = 0; 
+        audioRef.current.play().catch(e => console.warn(e)); 
       }
-
-      // 2. 진동 (징- 징- 징- 징- 징-) 5번 울림
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]); 
       }
-
-      // 3. 상단 푸시 알림
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, { body, icon: '/vite.svg' });
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -126,12 +103,13 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
-  // 🔥 실시간 감지 & 알람 트리거
+  // 실시간 감지
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
+          // 🔥 [안전장치] 실시간 데이터도 양쪽 다 확인
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
           const safeClientName = newD.client_name || newD.clientName || '';
 
@@ -147,11 +125,9 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
-
-            // 🔥 [여기가 핵심] 내 차 번호와 똑같은 배차가 들어오면 알람 발사!
+            // 본인 차량 배차 시 알림
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
-              playAlertSound("🔔 [배차 도착] 새 오더가 있습니다!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
-              // 화면에 팝업 띄우기 (이게 뜨면 화면이 켜지기도 함)
+              playAlertSound("🔔 [배차] 새 오더 도착!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
             }
           } 
@@ -165,10 +141,8 @@ const App: React.FC = () => {
                 return d;
             }));
             const oldStatus = (payload.old as any).status;
-            // 관리자에게 완료 알림
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo} / 송장 등록됨`);
-               // setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 300); // 관리자는 팝업 귀찮으면 주석처리
             }
           }
           else if (payload.eventType === 'DELETE') {
@@ -194,9 +168,29 @@ const App: React.FC = () => {
         supabase.from('dispatches').select('*').order('created_at', { ascending: false }).limit(200)
       ]);
 
-      if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
-      if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type, branches: x.branches })));
+      // 🔥 [안전장치] 차량 정보: 밑줄(_)이든 대문자든 다 받아라! (|| 연산자)
+      if (v.data) setVehicles(v.data.map((x:any) => ({ 
+        ...x, 
+        id: x.id, 
+        vehicleNo: x.vehicle_no || x.vehicleNo || '', 
+        ownerName: x.owner_name || x.ownerName || '', 
+        loginCode: x.login_code || x.loginCode || '', 
+        password: x.password || '', 
+        type: 'VEHICLE' 
+      })));
+
+      // 🔥 [안전장치] 거래처 정보: 마찬가지로 양쪽 다 확인
+      if (c.data) setClients(c.data.map((x:any) => ({ 
+        ...x, 
+        id: x.id, 
+        clientName: x.client_name || x.clientName || '', 
+        presidentName: x.president_name || x.presidentName || '', 
+        businessNo: x.business_no || x.businessNo || '', 
+        businessType: x.business_type || x.businessType || '', 
+        branches: x.branches 
+      })));
       
+      // 🔥 [안전장치] 운행 기록
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
@@ -224,6 +218,7 @@ const App: React.FC = () => {
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
       
+      // 🔥 [안전장치] 배차 기록
       if (d.data) setDispatches(d.data.map((x:any) => ({ 
           id: x.id, date: x.date, 
           clientName: x.client_name || x.clientName || '',
@@ -244,16 +239,29 @@ const App: React.FC = () => {
   const handleLogin = (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
     let loggedInUser: AuthUser | null = null;
     let nextView = ViewType.DASHBOARD;
+
+    // 공백 제거 (입력 실수 방지)
+    const cleanId = id.trim();
+    const cleanPw = pw ? pw.trim() : '';
+
     if (type === 'ADMIN') {
-      const admin = adminAccounts.find(a => a.username === id && a.password === pw);
+      const admin = adminAccounts.find(a => a.username === cleanId && a.password === cleanPw);
       if (admin) { loggedInUser = { id: admin.id, role: 'ADMIN', name: admin.name, identifier: admin.username }; nextView = ViewType.DASHBOARD; }
     } else if (type === 'PARTNER') {
-      const partner = partnerAccounts.find(p => p.username === id && p.password === pw);
+      const partner = partnerAccounts.find(p => p.username === cleanId && p.password === cleanPw);
       if (partner) { loggedInUser = { id: partner.id, role: 'PARTNER', name: partner.name, identifier: partner.clientName }; nextView = ViewType.OPERATION_ENTRY; }
     } else {
-      const vehicle = vehicles.find(v => v.loginCode === id && v.password === (pw || id));
-      if (vehicle) { loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; nextView = ViewType.DISPATCH_MGMT; }
+      // 🔥 [로그인 문제 해결] 차량번호(vehicleNo) 또는 로그인코드(loginCode) 둘 다 허용!
+      const vehicle = vehicles.find(v => 
+        (v.vehicleNo === cleanId || v.loginCode === cleanId) && 
+        v.password === cleanPw
+      );
+      if (vehicle) { 
+        loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; 
+        nextView = ViewType.DISPATCH_MGMT; 
+      }
     }
+
     if (loggedInUser) {
       setUser(loggedInUser);
       setCurrentView(nextView);
