@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Printer, FileSpreadsheet, Copy, Check } from 'lucide-react';
+import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { Operation, Client, Vehicle } from '../types';
-import * as XLSX from 'xlsx'; // 엑셀 다운로드 기능
+import * as XLSX from 'xlsx'; 
+import html2canvas from 'html2canvas';
 
 interface Props {
   operations: Operation[];
   clients: Client[];
-  vehicles: Vehicle[];     // 🔥 차량 정보 필수로 받음
+  vehicles: Vehicle[];     
   userRole?: string;       
   userIdentifier?: string; 
 }
@@ -20,7 +21,6 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
   const [endDate, setEndDate] = useState(lastDay);
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
-  
   const [selectedBranch, setSelectedBranch] = useState<string>('전체'); 
   const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
 
@@ -57,50 +57,76 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
-  // 차주명 찾기 헬퍼 함수
   const getOwnerName = (vNo: string) => {
     const found = vehicles.find(v => v.vehicleNo === vNo);
     return found ? found.ownerName : '';
   };
 
-  // 엑셀 다운로드 (진짜 파일 생성)
   const handleDownloadExcel = () => {
-    const excelData = filteredData.map(row => ({
-      '일자': row.date.split('T')[0],
-      '지점': row.branchName || '-',
-      '상차지': row.origin,
-      '하차지': row.destination,
-      '품명': row.item,
-      '차량번호': row.vehicleNo,
-      '차주명': getOwnerName(row.vehicleNo), // 차주명도 엑셀에 포함
-      '수량': row.quantity,
-      '공급가액': Number(row.supplyPrice),
-      '세액': Number(row.tax),
-      '합계금액': Number(row.totalAmount)
-    }));
+    try {
+      if (filteredData.length === 0) {
+        alert("다운로드할 데이터가 없습니다.");
+        return;
+      }
+      const excelData = filteredData.map(row => ({
+        '일자': row.date.split('T')[0],
+        '지점': row.branchName || '-',
+        '상차지': row.origin,
+        '하차지': row.destination,
+        '품명': row.item,
+        '차량번호': row.vehicleNo,
+        '차주명': getOwnerName(row.vehicleNo),
+        '수량': row.quantity,
+        '공급가액': Number(row.supplyPrice),
+        '세액': Number(row.tax),
+        '합계금액': Number(row.totalAmount)
+      }));
 
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    worksheet['!cols'] = [
-      { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, 
-      { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 15 }
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "거래내역");
-
-    const branchText = selectedBranch === '전체' ? '' : `(${selectedBranch})`;
-    const typeText = viewType === 'SALES' ? '매출' : '매입';
-    const fileName = `${selectedClientName}${branchText}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
-    
-    XLSX.writeFile(workbook, fileName);
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      worksheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "거래내역");
+      const safeClientName = selectedClientName.replace(/[\/\\?%*:|"<>]/g, '-');
+      const safeBranch = selectedBranch.replace(/[\/\\?%*:|"<>]/g, '-');
+      const branchText = selectedBranch === '전체' ? '' : `(${safeBranch})`;
+      const typeText = viewType === 'SALES' ? '매출' : '매입';
+      const fileName = `${safeClientName}${branchText}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+    } catch (error: any) {
+      console.error("엑셀 저장 실패:", error);
+      alert("엑셀 저장 중 오류가 발생했습니다.\n" + error.message);
+    }
   };
 
-  const handleCopy = () => {
-    const text = `[${selectedClientName} 거래명세서]\n기간: ${startDate} ~ ${endDate}\n합계: ${grandTotal.toLocaleString()}원`;
-    navigator.clipboard.writeText(text).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    });
+  const handleCopyImage = async () => {
+    const element = document.getElementById('print-area');
+    if (!element) {
+        alert('캡처할 영역을 찾을 수 없습니다.');
+        return;
+    }
+
+    try {
+        setIsCopied(true);
+        const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
+        canvas.toBlob((blob) => {
+            if (blob) {
+                navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                ]).then(() => {
+                    alert("📸 이미지로 복사되었습니다!\n카카오톡이나 문서에 '붙여넣기(Ctrl+V)' 하세요.");
+                    setTimeout(() => setIsCopied(false), 2000);
+                }).catch((err) => {
+                    console.error('클립보드 쓰기 실패:', err);
+                    alert('이미지 복사 실패 (보안 설정 확인 필요)');
+                    setIsCopied(false);
+                });
+            }
+        });
+    } catch (err) {
+        console.error('캡처 실패:', err);
+        alert('이미지 생성 중 오류가 발생했습니다.');
+        setIsCopied(false);
+    }
   };
 
   const handlePrint = () => {
@@ -110,11 +136,8 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
   return (
     <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
-        
-        {/* 🔥 [디자인 수정] 여백 p-6 -> p-4 로 축소 */}
-        <div className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
+        <div id="print-area" className="bg-white shadow-lg p-8 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
           
-          {/* 🔥 [디자인 수정] 헤더 배경/글자색: 회색/검정으로 통일 */}
           <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
             거 래 처 별 거 래 명 세 서 <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
@@ -146,7 +169,6 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
             <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">
               {viewType === 'SALES' ? '청구 금액' : '지급 금액'}
             </div>
-            {/* 🔥 [디자인 수정] 금액 배경 회색으로 */}
             <div className="w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold bg-gray-50 print:bg-transparent">
               {grandTotal.toLocaleString()}
             </div>
@@ -155,7 +177,6 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
           <div className="w-full mb-1">
             <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
               <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
-              {/* 🔥 [디자인 수정] 테이블 헤더 회색 */}
               <thead className="bg-gray-100 font-bold print:bg-gray-100">
                 <tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">지점/상차</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr>
               </thead>
@@ -186,7 +207,6 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
                 ))}
               </tbody>
               <tfoot className="font-bold border-t-2 border-black">
-                {/* 🔥 [디자인 수정] 합계 배경 회색 */}
                 <tr className="bg-gray-100 print:bg-transparent">
                   <td className="border border-black py-1" colSpan={6}>합 계</td>
                   <td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td>
@@ -224,18 +244,8 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
           <div className="bg-gray-100 p-2 rounded-lg mb-4">
             <label className="text-xs font-bold text-gray-500 mb-2 block">내역 구분</label>
             <div className="flex gap-2">
-              <button 
-                onClick={() => setViewType('SALES')}
-                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}
-              >
-                매출 (받을 돈)
-              </button>
-              <button 
-                onClick={() => setViewType('PURCHASE')}
-                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}
-              >
-                매입 (줄 돈)
-              </button>
+              <button onClick={() => setViewType('SALES')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}>매출 (받을 돈)</button>
+              <button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}>매입 (줄 돈)</button>
             </div>
           </div>
 
@@ -244,12 +254,7 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
             
             <div className="space-y-2">
                <label className="text-xs font-bold text-gray-700">거래처(상호) 선택</label>
-               <select 
-                value={selectedClientName} 
-                onChange={(e) => setSelectedClientName(e.target.value)} 
-                disabled={userRole === 'PARTNER'} 
-                className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}
-              >
+               <select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} disabled={userRole === 'PARTNER'} className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}>
                 {userRole === 'ADMIN' && <option value="전체">전체 거래처</option>}
                 {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
               </select>
@@ -266,7 +271,22 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
             )}
 
             <hr className="border-gray-200 my-2" />
-            <div className="space-y-2"><button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"><FileSpreadsheet className="w-4 h-4" />엑셀로 추출하기</button><div className="grid grid-cols-2 gap-2"><button onClick={handleCopy} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'}`}>{isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{isCopied ? '완료' : '내용 복사'}</button><button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"><Printer className="w-3 h-3" />인쇄</button></div></div>
+            <div className="space-y-2">
+                {/* 🔥 [이름 변경] 엑셀로 추출하기 -> 엑셀로 다운로드 */}
+                <button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors">
+                    <FileSpreadsheet className="w-4 h-4" />엑셀로 다운로드
+                </button>
+                
+                <div className="grid grid-cols-2 gap-2">
+                    <button onClick={handleCopyImage} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+                        {isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                        {isCopied ? '복사됨!' : '이미지 복사'}
+                    </button>
+                    <button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors">
+                        <Printer className="w-3 h-3" />인쇄
+                    </button>
+                </div>
+            </div>
           </div>
         </div>
       </div>
