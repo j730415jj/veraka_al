@@ -10,7 +10,7 @@ import MasterClientView from './components/MasterClientView';
 import MasterVehicleView from './components/MasterVehicleView';
 import MasterUnitPriceView from './components/MasterUnitPriceView';
 import MasterSnippetView from './components/MasterSnippetView';
-import VehicleTrackingView from './components/VehicleTrackingView';
+//  VehicleTrackingView import removed (위치관제 삭제)
 import DispatchManagementView from './components/DispatchManagementView';
 import AccountManagementView from './components/AccountManagementView';
 import DashboardView from './components/DashboardView';
@@ -97,13 +97,7 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // 🔥 [수정] 과부하 방지를 위해 10초 자동 새로고침 제거 (실시간 기능이 있으므로 괜찮음)
-  /* useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => fetchData(), 10000);
-    return () => clearInterval(interval);
-  }, [user]);
-  */
+  // 과부하 방지: 10초 자동 새로고침 삭제됨 (주석처리 했던 부분 삭제)
 
   // 실시간 감지
   useEffect(() => {
@@ -111,7 +105,6 @@ const App: React.FC = () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // 🔥 [수정] 안전장치 추가 (대문자/소문자 모두 허용)
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
           const safeClientName = newD.client_name || newD.clientName || '';
 
@@ -127,7 +120,6 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
-            // 본인 차량 배차 시 알림
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
               playAlertSound("🔔 [배차] 새 오더 도착!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
@@ -170,65 +162,13 @@ const App: React.FC = () => {
         supabase.from('dispatches').select('*').order('created_at', { ascending: false }).limit(200)
       ]);
 
-      // 🔥 [핵심 수정 1] 차량 정보 가져올 때 'password' 포함 & 안전장치( || ) 추가
-      if (v.data) setVehicles(v.data.map((x:any) => ({ 
-        ...x, 
-        id: x.id, 
-        vehicleNo: x.vehicle_no || x.vehicleNo || '', 
-        ownerName: x.owner_name || x.ownerName || '', 
-        loginCode: x.login_code || x.loginCode || '', 
-        password: x.password || '', // 로그인에 필수
-        type: 'VEHICLE' 
-      })));
-
-      // 🔥 [핵심 수정 2] 거래처 정보 안전장치
-      if (c.data) setClients(c.data.map((x:any) => ({ 
-        ...x, 
-        id: x.id, 
-        clientName: x.client_name || x.clientName || '', 
-        presidentName: x.president_name || x.presidentName || '', 
-        businessNo: x.business_no || x.businessNo || '', 
-        businessType: x.business_type || x.businessType || '', 
-        branches: x.branches 
-      })));
-      
-      // 🔥 [핵심 수정 3] 운행 정보 안전장치
-      if (o.data) setOperations(o.data.map((x:any) => ({ 
-          ...x, 
-          id: x.id, 
-          date: x.date || '', 
-          clientName: x.client_name || x.clientName || '',
-          vehicleNo: x.vehicle_no || x.vehicleNo || '',
-          unitPrice: x.unit_price || 0, 
-          supplyPrice: x.supply_price || 0, 
-          totalAmount: x.total_amount || 0, 
-          settlementStatus: x.settlement_status || 'PENDING', 
-          branchName: x.branch_name || '', 
-          clientUnitPrice: x.client_unit_price || 0, 
-          itemDescription: x.item_description || '', 
-          isInvoiceIssued: x.is_invoice_issued || false, 
-          invoicePhoto: x.invoice_photo || undefined,
-          origin: x.origin || '',
-          destination: x.destination || '',
-          item: x.item || '',
-          quantity: x.quantity || 0,
-          remarks: x.remarks || '',
-          type: x.type || 'SALES'
-      })));
-      
+      if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no || x.vehicleNo || '', ownerName: x.owner_name || x.ownerName || '', loginCode: x.login_code || x.loginCode || '', password: x.password || '', type: 'VEHICLE' })));
+      if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name || x.clientName || '', presidentName: x.president_name || x.presidentName || '', businessNo: x.business_no || x.businessNo || '', businessType: x.business_type || x.businessType || '', branches: x.branches })));
+      if (o.data) setOperations(o.data.map((x:any) => ({ ...x, id: x.id, date: x.date || '', clientName: x.client_name || x.clientName || '', vehicleNo: x.vehicle_no || x.vehicleNo || '', unitPrice: x.unit_price || 0, supplyPrice: x.supply_price || 0, totalAmount: x.total_amount || 0, settlementStatus: x.settlement_status || 'PENDING', branchName: x.branch_name || '', clientUnitPrice: x.client_unit_price || 0, itemDescription: x.item_description || '', isInvoiceIssued: x.is_invoice_issued || false, invoicePhoto: x.invoice_photo || undefined, origin: x.origin || '', destination: x.destination || '', item: x.item || '', quantity: x.quantity || 0, remarks: x.remarks || '', type: x.type || 'SALES' })));
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
-      
-      // 🔥 [핵심 수정 4] 배차 정보 안전장치
-      if (d.data) setDispatches(d.data.map((x:any) => ({ 
-          id: x.id, date: x.date, 
-          clientName: x.client_name || x.clientName || '',
-          vehicleNo: x.vehicle_no || x.vehicleNo || '',
-          origin: x.origin, destination: x.destination, item: x.item, 
-          count: x.count, remarks: x.remarks, status: x.status,
-          type: x.type || 'SALES'
-      })));
+      if (d.data) setDispatches(d.data.map((x:any) => ({ id: x.id, date: x.date, clientName: x.client_name || x.clientName || '', vehicleNo: x.vehicle_no || x.vehicleNo || '', origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status, type: x.type || 'SALES' })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
@@ -241,8 +181,6 @@ const App: React.FC = () => {
   const handleLogin = (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
     let loggedInUser: AuthUser | null = null;
     let nextView = ViewType.DASHBOARD;
-
-    // 공백 제거 (실수 방지)
     const cleanId = id.trim();
     const cleanPw = pw ? pw.trim() : '';
 
@@ -253,17 +191,9 @@ const App: React.FC = () => {
       const partner = partnerAccounts.find(p => p.username === cleanId && p.password === cleanPw);
       if (partner) { loggedInUser = { id: partner.id, role: 'PARTNER', name: partner.name, identifier: partner.clientName }; nextView = ViewType.OPERATION_ENTRY; }
     } else {
-      // 🔥 [핵심 수정 5] 차량번호(vehicleNo) 또는 코드(loginCode) 둘 다 로그인 허용!
-      const vehicle = vehicles.find(v => 
-        (v.vehicleNo === cleanId || v.loginCode === cleanId) && 
-        v.password === cleanPw
-      );
-      if (vehicle) { 
-        loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; 
-        nextView = ViewType.DISPATCH_MGMT; 
-      }
+      const vehicle = vehicles.find(v => (v.vehicleNo === cleanId || v.loginCode === cleanId) && v.password === cleanPw);
+      if (vehicle) { loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; nextView = ViewType.DISPATCH_MGMT; }
     }
-
     if (loggedInUser) {
       setUser(loggedInUser);
       setCurrentView(nextView);
@@ -275,60 +205,21 @@ const App: React.FC = () => {
 
   const handleLogout = () => { setUser(null); localStorage.removeItem('veraka_user'); };
 
-  const handleSaveVehicle = async (v: Vehicle) => {
-    const dbData = { vehicle_no: v.vehicleNo, owner_name: v.ownerName, phone: v.phone, password: v.password, login_code: v.loginCode };
-    const { error } = v.id.length === 36 ? await supabase.from('vehicles').update(dbData).eq('id', v.id) : await supabase.from('vehicles').insert(dbData);
-    if(error) alert("저장 실패: " + error.message); else fetchData();
-  };
+  const handleSaveVehicle = async (v: Vehicle) => { const dbData = { vehicle_no: v.vehicleNo, owner_name: v.ownerName, phone: v.phone, password: v.password, login_code: v.loginCode }; const { error } = v.id.length === 36 ? await supabase.from('vehicles').update(dbData).eq('id', v.id) : await supabase.from('vehicles').insert(dbData); if(error) alert("저장 실패: " + error.message); else fetchData(); };
   const handleDeleteVehicle = async (id: string) => { if(window.confirm("삭제?")) { await supabase.from('vehicles').delete().eq('id', id); fetchData(); }};
-  const handleSaveClient = async (c: Client) => {
-    const dbData = { client_name: c.clientName, president_name: c.presidentName, phone: c.phone, business_no: c.businessNo, branches: c.branches, address: c.address, fax: c.fax, business_type: c.businessType, category: c.category };
-    const { error } = c.id.length === 36 ? await supabase.from('clients').update(dbData).eq('id', c.id) : await supabase.from('clients').insert(dbData);
-    if(error) alert("실패: "+error.message); else fetchData();
-  };
+  const handleSaveClient = async (c: Client) => { const dbData = { client_name: c.clientName, president_name: c.presidentName, phone: c.phone, business_no: c.businessNo, branches: c.branches, address: c.address, fax: c.fax, business_type: c.businessType, category: c.category }; const { error } = c.id.length === 36 ? await supabase.from('clients').update(dbData).eq('id', c.id) : await supabase.from('clients').insert(dbData); if(error) alert("실패: "+error.message); else fetchData(); };
   const handleDeleteClient = async (id: string) => { if(confirm("삭제?")) { await supabase.from('clients').delete().eq('id', id); fetchData(); }};
-
-  const handleAddOperation = async (op: Operation) => {
-      setOperations(prev => [op, ...prev]); 
-      const dbData = {
-          id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type 
-      };
-      await supabase.from('operations').insert(dbData);
-  };
-
-  const handleUpdateOperation = async (op: Operation) => {
-      setOperations(prev => prev.map(o => o.id === op.id ? op : o));
-      const dbData = {
-        date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type
-      };
-      await supabase.from('operations').update(dbData).eq('id', op.id);
-  };
-
-  const handleSaveUnitPrice = async (u: UnitPriceMaster) => {
-    const dbData = { client_name: u.clientName, branch_name: u.branchName, origin: u.origin, destination: u.destination, item: u.item, unit_price: u.unitPrice, client_unit_price: u.clientUnitPrice };
-    if(u.id.length===36) await supabase.from('unit_prices').update(dbData).eq('id', u.id); else await supabase.from('unit_prices').insert(dbData);
-    fetchData();
-  };
+  const handleAddOperation = async (op: Operation) => { setOperations(prev => [op, ...prev]); await supabase.from('operations').insert({ id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type }); };
+  const handleUpdateOperation = async (op: Operation) => { setOperations(prev => prev.map(o => o.id === op.id ? op : o)); await supabase.from('operations').update({ date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type }).eq('id', op.id); };
+  const handleSaveUnitPrice = async (u: UnitPriceMaster) => { const dbData = { client_name: u.clientName, branch_name: u.branchName, origin: u.origin, destination: u.destination, item: u.item, unit_price: u.unitPrice, client_unit_price: u.clientUnitPrice }; if(u.id.length===36) await supabase.from('unit_prices').update(dbData).eq('id', u.id); else await supabase.from('unit_prices').insert(dbData); fetchData(); };
   const handleDeleteUnitPrice = async (id: string) => { if(confirm("삭제?")) { await supabase.from('unit_prices').delete().eq('id', id); fetchData(); }};
-  const handleSaveSnippet = async (s: Snippet) => {
-    const dbData = { title: s.title, content: s.content, keyword: s.keyword, origin: s.origin, destination: s.destination, item: s.item, client_name: s.clientName };
-    if(s.id.length===36) await supabase.from('snippets').update(dbData).eq('id', s.id); else await supabase.from('snippets').insert(dbData);
-    fetchData();
-  };
+  const handleSaveSnippet = async (s: Snippet) => { const dbData = { title: s.title, content: s.content, keyword: s.keyword, origin: s.origin, destination: s.destination, item: s.item, client_name: s.clientName }; if(s.id.length===36) await supabase.from('snippets').update(dbData).eq('id', s.id); else await supabase.from('snippets').insert(dbData); fetchData(); };
   const handleDeleteSnippet = async (id: string) => { if(confirm("삭제?")) { await supabase.from('snippets').delete().eq('id', id); fetchData(); }};
-
-  const handleUpdateDispatchStatus = async (id: string, status: 'pending'|'sent'|'completed', photo?: string, manualQuantity?: number) => {
-      setDispatches(prev => prev.map(d => d.id === id ? { ...d, status } : d));
-      const updateData: any = { status };
-      await supabase.from('dispatches').update(updateData).eq('id', id);
-      fetchData(); 
-  };
+  const handleUpdateDispatchStatus = async (id: string, status: 'pending'|'sent'|'completed', photo?: string, manualQuantity?: number) => { setDispatches(prev => prev.map(d => d.id === id ? { ...d, status } : d)); await supabase.from('dispatches').update({ status }).eq('id', id); fetchData(); };
 
   const renderView = () => {
     if (!user) return <LoginView onLogin={handleLogin} />;
-    
-    const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) 
-      : user.role === 'VEHICLE' ? operations.filter(op => op.vehicleNo === user.identifier) : operations;
+    const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) : user.role === 'VEHICLE' ? operations.filter(op => op.vehicleNo === user.identifier) : operations;
 
     switch (currentView) {
       case ViewType.DASHBOARD: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={dispatches} onUpdateOperation={handleUpdateOperation} />;
@@ -337,7 +228,7 @@ const App: React.FC = () => {
             user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
-                if (!d.vehicleNo) { alert('차량번호 누락!'); return; }
+                // 🔥 수동 입력 허용 (유효성 검사는 하위 컴포넌트에서 이미 함)
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
@@ -356,28 +247,13 @@ const App: React.FC = () => {
             onNavigate={setCurrentView} onAddSnippet={handleSaveSnippet} onAddOperation={handleAddOperation}
             onUpdateOperation={handleUpdateOperation} 
           />;
-      case ViewType.OPERATION_ENTRY:
-        return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices}
-            onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} 
-            onDeleteOperation={async (id) => { 
-                setOperations(prev => prev.filter(o => o.id !== id));
-                if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); }
-            }} />;
+      case ViewType.OPERATION_ENTRY: return <OperationEntryView user={user} operations={filteredOps} vehicles={vehicles} clients={clients} unitPriceMaster={unitPrices} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={async (id) => { setOperations(prev => prev.filter(o => o.id !== id)); if(confirm("삭제?")) { await supabase.from('operations').delete().eq('id', id); fetchData(); } }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
-      
-      case ViewType.VEHICLE_REPORT: 
-        return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
-        
-      case ViewType.COMPANY_REPORT: 
-        // 🔥 [핵심 수정 6] vehicles props 전달 (차주명 표시용)
-        return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-
-      case ViewType.CLIENT_REPORT: 
-        // 🔥 [핵심 수정 7] vehicles props 전달
-        return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-
+      case ViewType.VEHICLE_REPORT: return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
+      case ViewType.COMPANY_REPORT: return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      case ViewType.CLIENT_REPORT: return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-      case ViewType.VEHICLE_TRACKING: return <VehicleTrackingView vehicles={vehicles} />;
+      // 🔥 [수정] 차량 관제 뷰 삭제됨 (case ViewType.VEHICLE_TRACKING 제거)
       case ViewType.MASTER_CLIENT: return <MasterClientView clients={clients} onSave={handleSaveClient} onDelete={handleDeleteClient} />;
       case ViewType.MASTER_VEHICLE: return <MasterVehicleView vehicles={vehicles} userRole={user.role} onSave={handleSaveVehicle} onDelete={handleDeleteVehicle} />;
       case ViewType.MASTER_UNIT_PRICE: return <MasterUnitPriceView unitPrices={unitPrices} clients={clients} onSave={handleSaveUnitPrice} onDelete={handleDeleteUnitPrice} />;

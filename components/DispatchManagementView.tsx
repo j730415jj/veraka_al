@@ -381,20 +381,43 @@ const DispatchManagementView: React.FC<Props> = ({
           
           {/* 🔥 [추가됨] 매출/매입 구분 버튼 */}
           <div className="flex items-center gap-4 mb-3 pb-2 border-b border-gray-100">
-             <label className="flex items-center gap-1 cursor-pointer">
+              <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" name="dType" checked={dispatchType === 'SALES'} onChange={() => setDispatchType('SALES')} className="w-4 h-4 text-blue-600"/>
                 <span className={`text-xs font-bold ${dispatchType==='SALES'?'text-blue-600':'text-gray-500'}`}>매출 (청구)</span>
-             </label>
-             <label className="flex items-center gap-1 cursor-pointer">
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" name="dType" checked={dispatchType === 'PURCHASE'} onChange={() => setDispatchType('PURCHASE')} className="w-4 h-4 text-green-600"/>
                 <span className={`text-xs font-bold ${dispatchType==='PURCHASE'?'text-green-600':'text-gray-500'}`}>매입 (지급)</span>
-             </label>
+              </label>
           </div>
 
           <div className="flex flex-col lg:flex-row gap-2 items-end">
             <div className="flex-1 grid grid-cols-2 lg:grid-cols-7 gap-2 w-full relative">
-                <select value={newDispatch.vehicleNo} onChange={e => setNewDispatch(p => ({ ...p, vehicleNo: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 bg-slate-50"><option value="">차량</option>{vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo}</option>)}</select>
-                <select value={newDispatch.clientName} onChange={e => setNewDispatch(p => ({ ...p, clientName: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 text-blue-600 bg-slate-50"><option value="">거래처</option>{uniqueClientNames.map(n => <option key={n} value={n}>{n}</option>)}</select>
+                
+                {/* 🔥 [수정됨] 차량번호: input + datalist로 변경 (직접 입력 및 선택 가능) */}
+                <input 
+                    list="vehicleOptions" 
+                    placeholder="차량(수동)" 
+                    value={newDispatch.vehicleNo} 
+                    onChange={e => setNewDispatch(p => ({ ...p, vehicleNo: e.target.value }))} 
+                    className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 bg-slate-50"
+                />
+                <datalist id="vehicleOptions">
+                    {vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo}</option>)}
+                </datalist>
+
+                {/* 🔥 [수정됨] 거래처: input + datalist로 변경 (직접 입력 및 선택 가능) */}
+                <input 
+                    list="clientOptions" 
+                    placeholder="거래처(수동)" 
+                    value={newDispatch.clientName} 
+                    onChange={e => setNewDispatch(p => ({ ...p, clientName: e.target.value }))} 
+                    className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 text-blue-600 bg-slate-50"
+                />
+                <datalist id="clientOptions">
+                    {uniqueClientNames.map(n => <option key={n} value={n} />)}
+                </datalist>
+
                 <div className="col-span-1 relative group"><input placeholder="상차" value={newDispatch.origin} onChange={e => handleOriginChange(e.target.value)} onFocus={() => setActiveField('origin')} onClick={() => setActiveField('origin')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('origin')}</div>
                 <div className="col-span-1 relative group"><input placeholder="하차" value={newDispatch.destination} onChange={e => setNewDispatch(p => ({ ...p, destination: e.target.value }))} onFocus={() => setActiveField('destination')} onClick={() => setActiveField('destination')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('destination')}</div>
                 <div className="col-span-1 relative group"><input placeholder="품명" value={newDispatch.item} onChange={e => setNewDispatch(p => ({ ...p, item: e.target.value }))} onFocus={() => setActiveField('item')} onClick={() => setActiveField('item')} onBlur={() => setTimeout(() => setActiveField(null), 200)} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('item')}</div>
