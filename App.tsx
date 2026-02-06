@@ -40,16 +40,10 @@ const App: React.FC = () => {
   const wakeLockRef = useRef<any>(null); 
 
   useEffect(() => {
-    // 1. 소리 파일 준비
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
-
-    // 2. 알림 권한 요청
-    if ("Notification" in window && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
+    if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
     
-    // 3. 사용자 인터랙션 시 소리/화면켜짐 활성화
     const unlockAudioAndScreen = async () => {
       if(audioRef.current) {
         audioRef.current.volume = 1.0; 
@@ -58,11 +52,7 @@ const App: React.FC = () => {
           audioRef.current!.currentTime = 0;
         }).catch(() => {});
       }
-      try { 
-        if ('wakeLock' in navigator) {
-          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        }
-      } catch (err) {}
+      try { if ('wakeLock' in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
@@ -72,16 +62,9 @@ const App: React.FC = () => {
 
   const playAlertSound = (title: string, body: string) => {
     try {
-      if (audioRef.current) { 
-        audioRef.current.currentTime = 0; 
-        audioRef.current.play().catch(e => console.warn(e)); 
-      }
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]); 
-      }
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, { body, icon: '/vite.svg' });
-      }
+      if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]); 
+      if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: '/vite.svg' });
     } catch (e) { console.error(e); }
   };
 
@@ -109,7 +92,7 @@ const App: React.FC = () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
-          // 🔥 [안전장치] 실시간 데이터도 양쪽 다 확인
+          // 🔥 [수정] 안전장치 추가 (대문자/소문자 모두 허용)
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
           const safeClientName = newD.client_name || newD.clientName || '';
 
@@ -125,16 +108,15 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
-            // 본인 차량 배차 시 알림
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
               playAlertSound("🔔 [배차] 새 오더 도착!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
             }
-          } 
-          else if (payload.eventType === 'UPDATE') {
+          } else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
             setDispatches(prev => prev.map(d => {
                 if (d.id === updated.id) {
+                    // 기존 데이터 유지하면서 업데이트
                     const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
                     return { ...d, ...updated, vehicleNo: protectedVehicleNo };
                 }
@@ -142,10 +124,9 @@ const App: React.FC = () => {
             }));
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo} / 송장 등록됨`);
+               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`);
             }
-          }
-          else if (payload.eventType === 'DELETE') {
+          } else if (payload.eventType === 'DELETE') {
              setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
           }
       })
@@ -168,18 +149,18 @@ const App: React.FC = () => {
         supabase.from('dispatches').select('*').order('created_at', { ascending: false }).limit(200)
       ]);
 
-      // 🔥 [안전장치] 차량 정보: 밑줄(_)이든 대문자든 다 받아라! (|| 연산자)
+      // 🔥 [핵심 수정 1] 차량 정보 가져올 때 'password' 꼭 챙기고, 이름표 안전장치( || ) 추가
       if (v.data) setVehicles(v.data.map((x:any) => ({ 
         ...x, 
         id: x.id, 
         vehicleNo: x.vehicle_no || x.vehicleNo || '', 
         ownerName: x.owner_name || x.ownerName || '', 
         loginCode: x.login_code || x.loginCode || '', 
-        password: x.password || '', 
+        password: x.password || '', // 로그인에 필수!
         type: 'VEHICLE' 
       })));
 
-      // 🔥 [안전장치] 거래처 정보: 마찬가지로 양쪽 다 확인
+      // 🔥 [핵심 수정 2] 거래처 정보 안전장치
       if (c.data) setClients(c.data.map((x:any) => ({ 
         ...x, 
         id: x.id, 
@@ -190,7 +171,7 @@ const App: React.FC = () => {
         branches: x.branches 
       })));
       
-      // 🔥 [안전장치] 운행 기록
+      // 🔥 [핵심 수정 3] 운행 정보 안전장치
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
@@ -218,7 +199,7 @@ const App: React.FC = () => {
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
       
-      // 🔥 [안전장치] 배차 기록
+      // 🔥 [핵심 수정 4] 배차 정보 안전장치
       if (d.data) setDispatches(d.data.map((x:any) => ({ 
           id: x.id, date: x.date, 
           clientName: x.client_name || x.clientName || '',
@@ -239,8 +220,8 @@ const App: React.FC = () => {
   const handleLogin = (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
     let loggedInUser: AuthUser | null = null;
     let nextView = ViewType.DASHBOARD;
-
-    // 공백 제거 (입력 실수 방지)
+    
+    // 공백 제거 (실수 방지)
     const cleanId = id.trim();
     const cleanPw = pw ? pw.trim() : '';
 
@@ -251,7 +232,7 @@ const App: React.FC = () => {
       const partner = partnerAccounts.find(p => p.username === cleanId && p.password === cleanPw);
       if (partner) { loggedInUser = { id: partner.id, role: 'PARTNER', name: partner.name, identifier: partner.clientName }; nextView = ViewType.OPERATION_ENTRY; }
     } else {
-      // 🔥 [로그인 문제 해결] 차량번호(vehicleNo) 또는 로그인코드(loginCode) 둘 다 허용!
+      // 🔥 [핵심 수정 5] 로그인 시 차량번호(vehicleNo) 또는 코드(loginCode) 둘 다 통과!
       const vehicle = vehicles.find(v => 
         (v.vehicleNo === cleanId || v.loginCode === cleanId) && 
         v.password === cleanPw
@@ -261,7 +242,6 @@ const App: React.FC = () => {
         nextView = ViewType.DISPATCH_MGMT; 
       }
     }
-
     if (loggedInUser) {
       setUser(loggedInUser);
       setCurrentView(nextView);
