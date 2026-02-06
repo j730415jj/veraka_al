@@ -18,10 +18,9 @@ import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
 
-// 🔥 [수정 1] 내역서 컴포넌트 3총사 Import (새로 만든 파일들 연결)
 import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
 import CompanyTransactionStatement from './components/CompanyTransactionStatement';
-import ClientTransactionStatement from './components/ClientTransactionStatement'; // 👈 방금 만든 파일 추가!
+import ClientTransactionStatement from './components/ClientTransactionStatement';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -90,13 +89,17 @@ const App: React.FC = () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dispatches' }, (payload) => {
           const newD = payload.new as any;
+          // 🔥 [수정] 차량번호/거래처명 실시간 업데이트 시에도 확실하게 매핑
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
+          const safeClientName = newD.client_name || newD.clientName || '';
+
           const convertDispatch = (d: any): Dispatch => ({
-            id: d.id, date: d.date, clientName: d.client_name, 
+            id: d.id, date: d.date, 
+            clientName: safeClientName, 
             vehicleNo: safeVehicleNo,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
             remarks: d.remarks, status: d.status,
-            type: d.type // 매출/매입 타입
+            type: d.type
           });
 
           if (payload.eventType === 'INSERT') {
@@ -148,12 +151,13 @@ const App: React.FC = () => {
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no, ownerName: x.owner_name, loginCode: x.login_code, type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, presidentName: x.president_name, businessNo: x.business_no, businessType: x.business_type, branches: x.branches })));
       
+      // 🔥 [핵심 수정] 운행기록 데이터 매핑 강화 (DB 컬럼명 -> 앱 변수명)
       if (o.data) setOperations(o.data.map((x:any) => ({ 
           ...x, 
           id: x.id, 
           date: x.date || '', 
-          clientName: x.client_name || '', 
-          vehicleNo: x.vehicle_no || '', 
+          clientName: x.client_name || x.clientName || '', // 여기!
+          vehicleNo: x.vehicle_no || x.vehicleNo || '',    // 여기!
           unitPrice: x.unit_price || 0, 
           supplyPrice: x.supply_price || 0, 
           totalAmount: x.total_amount || 0, 
@@ -168,19 +172,21 @@ const App: React.FC = () => {
           item: x.item || '',
           quantity: x.quantity || 0,
           remarks: x.remarks || '',
-          type: x.type || 'SALES' // 매출/매입 타입
+          type: x.type || 'SALES'
       })));
       
       if (a.data) setAdminAccounts(a.data);
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
       
+      // 🔥 [핵심 수정] 배차 데이터 매핑 강화
       if (d.data) setDispatches(d.data.map((x:any) => ({ 
-          id: x.id, date: x.date, clientName: x.client_name, 
-          vehicleNo: x.vehicle_no || x.vehicleNo || '', 
+          id: x.id, date: x.date, 
+          clientName: x.client_name || x.clientName || '', // 여기!
+          vehicleNo: x.vehicle_no || x.vehicleNo || '',    // 여기!
           origin: x.origin, destination: x.destination, item: x.item, 
           count: x.count, remarks: x.remarks, status: x.status,
-          type: x.type || 'SALES' // 매출/매입 타입
+          type: x.type || 'SALES'
       })));
 
     } catch (error) { console.error("데이터 로딩 에러:", error); }
@@ -305,17 +311,15 @@ const App: React.FC = () => {
             }} />;
       case ViewType.CLIENT_SUMMARY: return <ClientSummaryView operations={filteredOps} />;
       
-      // 🔥 [수정 2] 차량거래 내역서 (완벽 연결)
       case ViewType.VEHICLE_REPORT: 
         return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
         
-      // 🔥 [수정 3] 상호별(거래처) 내역서 (완벽 연결 - 권한 포함)
       case ViewType.COMPANY_REPORT: 
         return <CompanyTransactionStatement operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
 
-      // 🔥 [수정 4] 거래처 내역서 (방금 만든 지점 기능 포함된 파일로 교체!)
+      // 🔥 [핵심 수정] vehicles={vehicles} 를 넘겨주어야 차주명 표시가 가능함!
       case ViewType.CLIENT_REPORT: 
-        return <ClientTransactionStatement operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.VEHICLE_TRACKING: return <VehicleTrackingView vehicles={vehicles} />;
