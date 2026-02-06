@@ -58,7 +58,7 @@ export const NAV_ITEMS = [
   { label: '차량거래 내역서', value: ViewType.VEHICLE_REPORT, category: '현황관리', roles: ['ADMIN', 'VEHICLE'] },
   { label: '상호별 내역서', value: ViewType.COMPANY_REPORT, category: '현황관리', roles: ['ADMIN'] },
   { label: '거래처 내역서', value: ViewType.CLIENT_REPORT, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
-  { label: '실시간 위치', value: ViewType.VEHICLE_TRACKING, category: '목록관리', roles: ['ADMIN', 'VEHICLE', 'PARTNER'] },
+  // 🔥 [삭제됨] 실시간 위치 (VEHICLE_TRACKING) 제거 완료
   { label: '세금 계산서', value: ViewType.TAX_INVOICE, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
   
   // 마스터 정보 관리 (ADMIN 전용)
@@ -69,6 +69,6 @@ export const NAV_ITEMS = [
   { label: '계정 관리', value: ViewType.ACCOUNT_MGMT, category: '목록관리', roles: ['ADMIN'] },
   { label: '비밀번호 변경', value: ViewType.CHANGE_PASSWORD, category: '목록관리', roles: ['ADMIN', 'VEHICLE', 'PARTNER'] },
   
-  // 기사님 전용 (나의 지출 관리는 MASTER_VEHICLE 뷰를 재사용하거나 별도 뷰 필요, 여기선 기존 유지)
+  // 기사님 전용
   { label: '나의 지출 관리', value: ViewType.MASTER_VEHICLE, category: '현황관리', roles: ['VEHICLE'] },
 ];

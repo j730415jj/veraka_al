@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Printer, FileSpreadsheet, Copy, Check } from 'lucide-react';
+import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { Operation, Vehicle } from '../types';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas'; // 🔥 이미지 복사 기능용
 
 interface Props {
   operations: Operation[];
@@ -8,7 +10,7 @@ interface Props {
 }
 
 export default function VehicleTransactionStatementNew({ operations, vehicles }: Props) {
-  // 1. 날짜 초기값 설정 (이번 달 1일 ~ 말일)
+  // 1. 날짜 초기값 설정
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -19,14 +21,14 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   const [selectedVehicleNo, setSelectedVehicleNo] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
 
-  // 초기 차량 선택 (목록이 로드되면 첫 번째 차량 자동 선택)
+  // 초기 차량 선택
   useEffect(() => {
     if (vehicles.length > 0 && !selectedVehicleNo) {
       setSelectedVehicleNo(vehicles[0].vehicleNo);
     }
   }, [vehicles, selectedVehicleNo]);
 
-  // 3. 데이터 필터링 (날짜 & 차량번호)
+  // 3. 데이터 필터링
   const filteredData = useMemo(() => {
     return operations.filter(op => {
       if (!op.date) return false;
@@ -43,38 +45,83 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
-  // 5. 공제액 계산 (차주용: 5%)
-  const deductionTotal = Math.floor(grandTotal * 0.05); // 총액의 5%
-  const commissionSupply = Math.floor(deductionTotal / 1.1); // 수수료 공급가
-  const commissionTax = deductionTotal - commissionSupply;   // 수수료 부가세
-  const finalPayment = grandTotal - deductionTotal;          // 실지급액
+  // 5. 공제액 계산 (5%)
+  const deductionTotal = Math.floor(grandTotal * 0.05);
+  const commissionSupply = Math.floor(deductionTotal / 1.1);
+  const commissionTax = deductionTotal - commissionSupply;
+  const finalPayment = grandTotal - deductionTotal;
 
-  // 엑셀 다운로드 (기능 시뮬레이션)
+  // 🔥 [수정] 엑셀 다운로드 (진짜 기능 구현)
   const handleDownloadExcel = () => {
-    const fileName = `${selectedVehicleNo}_차량거래내역서_${startDate}_${endDate}.xlsx`;
-    alert(`[엑셀 다운로드 요청]\n파일: ${fileName}\n데이터: ${filteredData.length}건`);
+    if (filteredData.length === 0) {
+      alert("다운로드할 데이터가 없습니다.");
+      return;
+    }
+
+    const excelData = filteredData.map(row => ({
+      '일자': row.date.split('T')[0],
+      '상차지': row.origin,
+      '하차지': row.destination,
+      '품명': row.item,
+      '단가': Number(row.unitPrice),
+      '수량': Number(row.quantity),
+      '공급가액': Number(row.supplyPrice),
+      '세액': Number(row.tax),
+      '합계금액': Number(row.totalAmount)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    worksheet['!cols'] = [{ wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 15 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "차량거래내역");
+
+    const safeVehicleNo = selectedVehicleNo.replace(/[\/\\?%*:|"<>]/g, '-');
+    const fileName = `${safeVehicleNo}_차량거래내역서_${startDate}_${endDate}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
   };
 
-  // 복사 기능
-  const handleCopy = () => {
-    const text = `[${selectedVehicleNo} 거래명세서]\n기간: ${startDate} ~ ${endDate}\n공급가: ${totalSupply.toLocaleString()}원\n세액: ${totalTax.toLocaleString()}원\n합계: ${grandTotal.toLocaleString()}원\n실지급액: ${finalPayment.toLocaleString()}원`;
-    navigator.clipboard.writeText(text).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    });
+  // 🔥 [수정] 이미지 복사 기능 (html2canvas)
+  const handleCopyImage = async () => {
+    const element = document.getElementById('vehicle-print-area');
+    if (!element) {
+        alert('캡처할 영역을 찾을 수 없습니다.');
+        return;
+    }
+    try {
+        setIsCopied(true);
+        const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
+        canvas.toBlob((blob) => {
+            if (blob) {
+                navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                .then(() => {
+                    alert("📸 이미지로 복사되었습니다!\n카톡에 붙여넣기(Ctrl+V) 하세요.");
+                    setTimeout(() => setIsCopied(false), 2000);
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("이미지 복사 실패 (브라우저 보안 설정 확인)");
+                    setIsCopied(false);
+                });
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        alert("이미지 생성 오류");
+        setIsCopied(false);
+    }
   };
 
-  // 인쇄 기능
   const handlePrint = () => {
     window.print();
   };
 
   return (
     <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
-      {/* 📄 왼쪽: 내역서 (A4 스타일) */}
+      
+      {/* 📄 왼쪽: 내역서 (캡처 영역 id="vehicle-print-area" 추가) */}
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
         <div 
-          // 🔥 [수정] p-6 -> p-4 (여백 축소)
+          id="vehicle-print-area" // 🔥 캡처 영역 지정
           className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none"
           style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}
         >
@@ -171,7 +218,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 ) : (
                   <tr><td colSpan={9} className="border border-black py-10 text-center text-gray-500">기간 내 거래 내역이 없습니다.</td></tr>
                 )}
-                {/* 빈 행 채우기 (최소 15줄 유지) */}
+                {/* 빈 행 채우기 */}
                 {Array.from({ length: Math.max(0, 15 - filteredData.length) }).map((_, i) => (
                   <tr key={`empty-${i}`}>
                     <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
@@ -189,7 +236,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                   <td className="border border-black py-1 text-right px-1">{totalTax.toLocaleString()}</td>
                   <td className="border border-black py-1 text-right px-1 text-base">{grandTotal.toLocaleString()}</td>
                 </tr>
-                {/* 5% 공제 라인 (빨간색) */}
                 <tr className="text-red-600">
                   <td className="border border-black py-1" colSpan={6}>5% 공제금 (수수료+부가세)</td>
                   <td className="border border-black py-1 text-right px-1">{commissionSupply.toLocaleString()}</td>
@@ -200,7 +246,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
             </table>
           </div>
 
-          {/* 우측 하단 결제 박스 (수수료 상세) */}
+          {/* 우측 하단 결제 박스 */}
           <div className="flex justify-end mt-4">
              <table className="w-[300px] border-collapse border border-black text-sm bg-gray-50 print:bg-transparent">
               <tbody>
@@ -226,7 +272,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
             </table>
           </div>
           
-           {/* 하단 날인 */}
            <div className="mt-8 text-center pb-4">
             <p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p>
             <div className="text-xl font-bold tracking-widest inline-block">
@@ -237,7 +282,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         </div>
       </div>
 
-      {/* 🛠 오른쪽: 컨트롤 패널 (인쇄 시 숨김) */}
+      {/* 🛠 오른쪽: 컨트롤 패널 */}
       <div className="w-full xl:w-72 flex-shrink-0 print:hidden">
         <div className="bg-white rounded-lg shadow-md p-4 sticky top-4 border border-gray-200">
           <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2">
@@ -247,18 +292,8 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-700">조회 기간</label>
-              <input 
-                type="date" 
-                value={startDate} 
-                onChange={(e) => setStartDate(e.target.value)} 
-                className="w-full p-2 border rounded text-xs" 
-              />
-              <input 
-                type="date" 
-                value={endDate} 
-                onChange={(e) => setEndDate(e.target.value)} 
-                className="w-full p-2 border rounded text-xs" 
-              />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 border rounded text-xs" />
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 border rounded text-xs" />
             </div>
             <div className="space-y-2">
                <label className="text-xs font-bold text-gray-700">차량 선택</label>
@@ -279,20 +314,23 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
             <hr className="border-gray-200 my-2" />
             
             <div className="space-y-2">
+              {/* 🔥 [수정] 엑셀로 다운로드 (이름 변경됨) */}
               <button 
                 onClick={handleDownloadExcel} 
                 className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                엑셀로 추출하기
+                엑셀로 다운로드
               </button>
+
+              {/* 🔥 [수정] 이미지 복사 버튼 추가 */}
               <div className="grid grid-cols-2 gap-2">
                 <button 
-                  onClick={handleCopy} 
-                  className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'}`}
+                  onClick={handleCopyImage} 
+                  className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                 >
-                  {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {isCopied ? '완료' : '내용 복사'}
+                  {isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                  {isCopied ? '복사됨!' : '이미지 복사'}
                 </button>
                 <button 
                   onClick={handlePrint} 
