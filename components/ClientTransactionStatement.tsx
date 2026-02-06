@@ -3,6 +3,8 @@ import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } fro
 import { Operation, Client, Vehicle } from '../types';
 import * as XLSX from 'xlsx'; 
 import html2canvas from 'html2canvas';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 interface Props {
   operations: Operation[];
@@ -62,76 +64,121 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
     return found ? found.ownerName : '';
   };
 
-  const handleDownloadExcel = () => {
-    try {
-      if (filteredData.length === 0) {
-        alert("다운로드할 데이터가 없습니다.");
-        return;
-      }
-      const excelData = filteredData.map(row => ({
-        '일자': row.date.split('T')[0],
-        '지점': row.branchName || '-',
-        '상차지': row.origin,
-        '하차지': row.destination,
-        '품명': row.item,
-        '차량번호': row.vehicleNo,
-        '차주명': getOwnerName(row.vehicleNo),
-        '수량': row.quantity,
-        '공급가액': Number(row.supplyPrice),
-        '세액': Number(row.tax),
-        '합계금액': Number(row.totalAmount)
-      }));
+  // 🔥 ExcelJS 적용 (거래처별)
+  const handleDownloadExcel = async () => {
+    if (filteredData.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('거래내역');
 
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-      worksheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "거래내역");
-      const safeClientName = selectedClientName.replace(/[\/\\?%*:|"<>]/g, '-');
-      const safeBranch = selectedBranch.replace(/[\/\\?%*:|"<>]/g, '-');
-      const branchText = selectedBranch === '전체' ? '' : `(${safeBranch})`;
-      const typeText = viewType === 'SALES' ? '매출' : '매입';
-      const fileName = `${safeClientName}${branchText}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
-      XLSX.writeFile(workbook, fileName);
-    } catch (error: any) {
-      console.error("엑셀 저장 실패:", error);
-      alert("엑셀 저장 중 오류가 발생했습니다.\n" + error.message);
+    sheet.columns = [{ width: 12 }, { width: 15 }, { width: 15 }, { width: 10 }, { width: 12 }, { width: 10 }, { width: 8 }, { width: 12 }, { width: 12 }, { width: 15 }];
+
+    const title = '거 래 처 별 거 래 명 세 서';
+    const typeLabel = viewType === 'SALES' ? '청구 금액' : '지급 금액';
+
+    const titleRow = sheet.addRow([`${title} (${parseInt(startDate.slice(5, 7))}월)`]);
+    sheet.mergeCells('A1:J1');
+    titleRow.height = 35;
+    titleRow.font = { name: '맑은 고딕', size: 20, bold: true };
+    titleRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+
+    sheet.addRow([]);
+
+    sheet.getCell('A3').value = `${selectedClientName} ${selectedBranch !== '전체' ? '('+selectedBranch+')' : ''} 귀하`;
+    sheet.mergeCells('A3:E6');
+    const clientInfo = sheet.getCell('A3');
+    clientInfo.font = { size: 16, bold: true };
+    clientInfo.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    sheet.getCell('F3').value = '등록번호'; sheet.getCell('G3').value = '406-81-64763'; sheet.mergeCells('G3:J3');
+    sheet.getCell('F4').value = '상호'; sheet.getCell('G4').value = '(주)베라카'; 
+    sheet.getCell('H4').value = '성명'; sheet.getCell('I4').value = '장국용'; sheet.mergeCells('I4:J4');
+    sheet.getCell('F5').value = '주소'; sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; sheet.mergeCells('G5:J5');
+
+    for(let r=3; r<=5; r++) {
+        for(let c=6; c<=10; c++) {
+            const cell = sheet.getCell(r, c);
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if(c === 6 || c === 8 && r === 4) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        }
     }
+
+    sheet.addRow([]);
+    const summaryRow = sheet.addRow(['공급가액', totalSupply.toLocaleString(), '', '세액', totalTax.toLocaleString(), typeLabel, '', '', '', grandTotal.toLocaleString()]);
+    summaryRow.height = 30;
+    ['A8', 'D8', 'F8'].forEach(k => {
+        const cell = sheet.getCell(k);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    sheet.getCell('J8').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+    sheet.getCell('J8').font = { size: 14, bold: true };
+    sheet.mergeCells('B8:C8'); sheet.mergeCells('F8:I8');
+    ['A8','B8','C8','D8','E8','F8','G8','H8','I8','J8'].forEach(k => sheet.getCell(k).border = { top: {style:'medium'}, bottom: {style:'medium'} });
+
+    sheet.addRow([]);
+
+    const headerRow = sheet.addRow(['일자', '지점/상차', '하차지', '품명', '차량', '차주명', '수량', '공급가액', '세액', '합계금액']);
+    headerRow.height = 25;
+    headerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+    });
+
+    filteredData.forEach(row => {
+        const originText = row.branchName ? `[${row.branchName}] ${row.origin}` : row.origin;
+        const r = sheet.addRow([row.date.split('T')[0], originText, row.destination, row.item, row.vehicleNo, getOwnerName(row.vehicleNo), Number(row.quantity), Number(row.supplyPrice), Number(row.tax), Number(row.totalAmount)]);
+        r.eachCell((cell, col) => {
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = [7,8,9,10].includes(col) ? { horizontal: 'right' } : { horizontal: 'center' };
+            if([7,8,9,10].includes(col)) cell.numFmt = '#,##0';
+        });
+    });
+
+    const emptyRows = Math.max(0, 15 - filteredData.length);
+    for(let i=0; i<emptyRows; i++) {
+        const r = sheet.addRow(['', '', '', '', '', '', '', '', '', '']);
+        r.eachCell(c => c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} });
+    }
+
+    const footerRow = sheet.addRow(['합 계', '', '', '', '', '', '', totalSupply, totalTax, grandTotal]);
+    sheet.mergeCells(`A${footerRow.number}:G${footerRow.number}`);
+    footerRow.height = 25;
+    footerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+        cell.font = { bold: true };
+        cell.border = { top: {style:'medium'}, left: {style:'thin'}, bottom: {style:'medium'}, right: {style:'thin'} };
+        cell.numFmt = '#,##0';
+    });
+    footerRow.getCell(1).alignment = { horizontal: 'center' };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeClientName = selectedClientName.replace(/[\/\\?%*:|"<>]/g, '-');
+    const fileName = `${safeClientName}_${viewType === 'SALES' ? '매출' : '매입'}내역서_${startDate}_${endDate}.xlsx`;
+    saveAs(new Blob([buffer]), fileName);
   };
 
   const handleCopyImage = async () => {
     const element = document.getElementById('print-area');
-    if (!element) {
-        alert('캡처할 영역을 찾을 수 없습니다.');
-        return;
-    }
-
+    if (!element) { alert('캡처할 영역을 찾을 수 없습니다.'); return; }
     try {
         setIsCopied(true);
         const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
         canvas.toBlob((blob) => {
             if (blob) {
-                navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                ]).then(() => {
-                    alert("📸 이미지로 복사되었습니다!\n카카오톡이나 문서에 '붙여넣기(Ctrl+V)' 하세요.");
-                    setTimeout(() => setIsCopied(false), 2000);
-                }).catch((err) => {
-                    console.error('클립보드 쓰기 실패:', err);
-                    alert('이미지 복사 실패 (보안 설정 확인 필요)');
-                    setIsCopied(false);
-                });
+                navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                .then(() => { alert("📸 이미지로 복사되었습니다!"); setTimeout(() => setIsCopied(false), 2000); })
+                .catch(() => { alert("복사 실패"); setIsCopied(false); });
             }
         });
-    } catch (err) {
-        console.error('캡처 실패:', err);
-        alert('이미지 생성 중 오류가 발생했습니다.');
-        setIsCopied(false);
-    }
+    } catch { alert("에러"); setIsCopied(false); }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => { window.print(); };
 
   return (
     <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
@@ -142,8 +189,9 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
             거 래 처 별 거 래 명 세 서 <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
 
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex flex-col justify-end h-full">
+          {/* 🔥 [수정됨] 헤더 레이아웃: 중앙 정렬 */}
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex-1 flex flex-col justify-center items-center h-full">
               <h2 className="text-3xl font-bold tracking-tighter">
                 {selectedClientName} {selectedBranch !== '전체' && <span className="text-xl text-gray-600">({selectedBranch})</span>} 귀하
               </h2>
@@ -272,7 +320,6 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
 
             <hr className="border-gray-200 my-2" />
             <div className="space-y-2">
-                {/* 🔥 [이름 변경] 엑셀로 추출하기 -> 엑셀로 다운로드 */}
                 <button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors">
                     <FileSpreadsheet className="w-4 h-4" />엑셀로 다운로드
                 </button>

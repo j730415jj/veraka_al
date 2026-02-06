@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } from 'lucide-react';
 import { Operation, Client, Vehicle } from '../types';
 import * as XLSX from 'xlsx';
-import html2canvas from 'html2canvas'; // 🔥 이미지 복사 기능
+import html2canvas from 'html2canvas';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 interface Props {
   operations: Operation[];
@@ -52,90 +54,139 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     return found ? found.ownerName : '';
   };
 
-  // 🔥 [수정] 엑셀 다운로드 (데이터 추출 기능)
-  const handleDownloadExcel = () => {
-    if (filteredData.length === 0) {
-      alert("다운로드할 데이터가 없습니다.");
-      return;
+  // 🔥 ExcelJS 적용 (상호별)
+  const handleDownloadExcel = async () => {
+    if (filteredData.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('거래내역');
+
+    sheet.columns = [{ width: 12 }, { width: 15 }, { width: 15 }, { width: 10 }, { width: 12 }, { width: 10 }, { width: 8 }, { width: 12 }, { width: 12 }, { width: 15 }];
+
+    const title = viewType === 'SALES' ? '거 래 명 세 서 ( 매 출 )' : '거 래 명 세 서 ( 매 입 )';
+    const typeLabel = viewType === 'SALES' ? '청구 금액' : '지급 금액';
+
+    const titleRow = sheet.addRow([`${title} (${parseInt(startDate.slice(5, 7))}월)`]);
+    sheet.mergeCells('A1:J1');
+    titleRow.height = 35;
+    titleRow.font = { name: '맑은 고딕', size: 20, bold: true };
+    titleRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+
+    sheet.addRow([]);
+
+    sheet.getCell('A3').value = `${selectedClientName} 귀하`;
+    sheet.mergeCells('A3:E6');
+    const clientInfo = sheet.getCell('A3');
+    clientInfo.font = { size: 16, bold: true };
+    clientInfo.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    sheet.getCell('F3').value = '등록번호'; sheet.getCell('G3').value = '406-81-64763'; sheet.mergeCells('G3:J3');
+    sheet.getCell('F4').value = '상호'; sheet.getCell('G4').value = '(주)베라카'; 
+    sheet.getCell('H4').value = '성명'; sheet.getCell('I4').value = '장국용'; sheet.mergeCells('I4:J4');
+    sheet.getCell('F5').value = '주소'; sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; sheet.mergeCells('G5:J5');
+    sheet.getCell('F6').value = '업태'; sheet.getCell('G6').value = '도매및소매업'; sheet.mergeCells('G6:H6');
+    sheet.getCell('I6').value = '종목'; sheet.getCell('J6').value = '골재';
+
+    for(let r=3; r<=6; r++) {
+        for(let c=6; c<=10; c++) {
+            const cell = sheet.getCell(r, c);
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if(c === 6 || c === 8 && r === 4) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+            if(r===6 && c===9) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        }
     }
 
-    const excelData = filteredData.map(row => ({
-      '일자': row.date.split('T')[0],
-      '상차지': row.origin,
-      '하차지': row.destination,
-      '품명': row.item,
-      '차량번호': row.vehicleNo,
-      '차주명': getOwnerName(row.vehicleNo),
-      '수량': row.quantity,
-      '공급가액': Number(row.supplyPrice),
-      '세액': Number(row.tax),
-      '합계금액': Number(row.totalAmount)
-    }));
+    sheet.addRow([]);
+    const summaryRow = sheet.addRow(['공급가액', totalSupply.toLocaleString(), '', '세액', totalTax.toLocaleString(), typeLabel, '', '', '', grandTotal.toLocaleString()]);
+    summaryRow.height = 30;
+    ['A8', 'D8', 'F8'].forEach(k => {
+        const cell = sheet.getCell(k);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    sheet.getCell('J8').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+    sheet.getCell('J8').font = { size: 14, bold: true };
+    sheet.mergeCells('B8:C8'); sheet.mergeCells('F8:I8');
+    ['A8','B8','C8','D8','E8','F8','G8','H8','I8','J8'].forEach(k => sheet.getCell(k).border = { top: {style:'medium'}, bottom: {style:'medium'} });
 
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    worksheet['!cols'] = [{ wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "거래내역");
+    sheet.addRow([]);
 
+    const headerRow = sheet.addRow(['일자', '상차지', '하차지', '품명', '차량', '차주명', '수량', '공급가액', '세액', '합계금액']);
+    headerRow.height = 25;
+    headerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } };
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+    });
+
+    filteredData.forEach(row => {
+        const r = sheet.addRow([row.date.split('T')[0], row.origin, row.destination, row.item, row.vehicleNo, getOwnerName(row.vehicleNo), Number(row.quantity), Number(row.supplyPrice), Number(row.tax), Number(row.totalAmount)]);
+        r.eachCell((cell, col) => {
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = [7,8,9,10].includes(col) ? { horizontal: 'right' } : { horizontal: 'center' };
+            if([7,8,9,10].includes(col)) cell.numFmt = '#,##0';
+        });
+    });
+
+    const emptyRows = Math.max(0, 15 - filteredData.length);
+    for(let i=0; i<emptyRows; i++) {
+        const r = sheet.addRow(['', '', '', '', '', '', '', '', '', '']);
+        r.eachCell(c => c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} });
+    }
+
+    const footerRow = sheet.addRow(['합 계', '', '', '', '', '', '', totalSupply, totalTax, grandTotal]);
+    sheet.mergeCells(`A${footerRow.number}:G${footerRow.number}`);
+    footerRow.height = 25;
+    footerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+        cell.font = { bold: true };
+        cell.border = { top: {style:'medium'}, left: {style:'thin'}, bottom: {style:'medium'}, right: {style:'thin'} };
+        cell.numFmt = '#,##0';
+    });
+    footerRow.getCell(1).alignment = { horizontal: 'center' };
+
+    const buffer = await workbook.xlsx.writeBuffer();
     const safeClientName = selectedClientName.replace(/[\/\\?%*:|"<>]/g, '-');
-    const typeText = viewType === 'SALES' ? '매출' : '매입';
-    const fileName = `${safeClientName}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+    const fileName = `${safeClientName}_${viewType === 'SALES' ? '매출' : '매입'}내역서_${startDate}_${endDate}.xlsx`;
+    saveAs(new Blob([buffer]), fileName);
   };
 
-  // 🔥 [수정] 이미지 복사 기능
   const handleCopyImage = async () => {
     const element = document.getElementById('company-print-area');
-    if (!element) {
-        alert('캡처할 영역을 찾을 수 없습니다.');
-        return;
-    }
+    if (!element) { alert('캡처할 영역을 찾을 수 없습니다.'); return; }
     try {
         setIsCopied(true);
         const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
         canvas.toBlob((blob) => {
             if (blob) {
                 navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-                .then(() => {
-                    alert("📸 이미지로 복사되었습니다!\n카톡에 붙여넣기(Ctrl+V) 하세요.");
-                    setTimeout(() => setIsCopied(false), 2000);
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("이미지 복사 실패 (브라우저 보안 설정 확인)");
-                    setIsCopied(false);
-                });
+                .then(() => { alert("📸 이미지로 복사되었습니다!"); setTimeout(() => setIsCopied(false), 2000); })
+                .catch(() => { alert("복사 실패"); setIsCopied(false); });
             }
         });
-    } catch (err) {
-        console.error(err);
-        alert("이미지 생성 오류");
-        setIsCopied(false);
-    }
+    } catch { alert("에러"); setIsCopied(false); }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => { window.print(); };
 
   return (
     <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
       
-      {/* 📄 왼쪽: 내역서 (캡처 영역 id="company-print-area" 추가) */}
+      {/* 📄 왼쪽: 내역서 화면 */}
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
-        <div 
-          id="company-print-area" // 🔥 캡처 영역 지정
-          className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none"
-          style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}
-        >
-          {/* 헤더 */}
+        <div id="company-print-area" className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
+          
           <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
             {viewType === 'SALES' ? '거 래 명 세 서 (매 출)' : '거 래 명 세 서 (매 입)'}
             <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
 
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex flex-col justify-end h-full">
+          {/* 🔥 [수정됨] 헤더 레이아웃: 상호명을 왼쪽 여백의 '중앙'으로 이동 */}
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex-1 flex flex-col justify-center items-center h-full">
               <h2 className="text-3xl font-bold tracking-tighter">{selectedClientName} 귀하</h2>
               <p className="text-sm text-gray-500 mt-1">
                 {viewType === 'SALES' ? '※ 귀하가 운송 의뢰한 내역 (청구)' : '※ 귀하가 당사에 운송 제공한 내역 (지급)'}
@@ -153,15 +204,9 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
             </div>
           </div>
 
-          {/* 상단 요약 바 */}
           <div className="flex border-2 border-black mb-1 text-sm">
-            <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100">
-              <span>공급가액</span><span>세 액</span>
-            </div>
-            <div className="w-1/4 border-r border-black p-1 text-right flex flex-col justify-center px-2 font-bold">
-              <span>{totalSupply.toLocaleString()}</span>
-              <span>{totalTax.toLocaleString()}</span>
-            </div>
+            <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100"><span>공급가액</span><span>세 액</span></div>
+            <div className="w-1/4 border-r border-black p-1 text-right flex flex-col justify-center px-2 font-bold"><span>{totalSupply.toLocaleString()}</span><span>{totalTax.toLocaleString()}</span></div>
             <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">
               {viewType === 'SALES' ? '청구 금액' : '지급 금액'}
             </div>
@@ -170,25 +215,11 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
             </div>
           </div>
 
-          {/* 메인 테이블 */}
           <div className="w-full mb-1">
             <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
-              <colgroup>
-                <col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/>
-                <col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/>
-              </colgroup>
+              <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
               <thead className="bg-gray-100 font-bold print:bg-gray-100">
-                <tr>
-                  <th className="border border-black py-1">일자</th>
-                  <th className="border border-black py-1">상차지</th>
-                  <th className="border border-black py-1">하차지</th>
-                  <th className="border border-black py-1">품명</th>
-                  <th className="border border-black py-1">차량</th>
-                  <th className="border border-black py-1">수량</th>
-                  <th className="border border-black py-1">공급가액</th>
-                  <th className="border border-black py-1">세액</th>
-                  <th className="border border-black py-1">합계금액</th>
-                </tr>
+                <tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">상차지</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr>
               </thead>
               <tbody>
                 {filteredData.length > 0 ? (filteredData.map((row) => {
@@ -211,13 +242,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
                     );
                   })) : (<tr><td colSpan={9} className="border border-black py-10 text-center text-gray-500">기간 내 거래 내역이 없습니다.</td></tr>)}
                 {Array.from({ length: Math.max(0, 15 - filteredData.length) }).map((_, i) => (
-                  <tr key={`empty-${i}`}>
-                    <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
-                    <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
-                    <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
-                    <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
-                    <td className="border border-black py-2">&nbsp;</td>
-                  </tr>
+                  <tr key={`empty-${i}`}><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td></tr>
                 ))}
               </tbody>
               <tfoot className="font-bold border-t-2 border-black">
@@ -251,7 +276,6 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
         </div>
       </div>
 
-      {/* 🛠 오른쪽: 컨트롤 패널 */}
       <div className="w-full xl:w-72 flex-shrink-0 print:hidden">
         <div className="bg-white rounded-lg shadow-md p-4 sticky top-4 border border-gray-200">
           <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2"><Search className="w-4 h-4 text-blue-600" />내역서 설정</h2>
@@ -259,70 +283,27 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
           <div className="bg-gray-100 p-2 rounded-lg mb-4">
             <label className="text-xs font-bold text-gray-500 mb-2 block">내역 구분</label>
             <div className="flex gap-2">
-              <button 
-                onClick={() => setViewType('SALES')}
-                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}
-              >
-                매출 (받을 돈)
-              </button>
-              <button 
-                onClick={() => setViewType('PURCHASE')}
-                className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}
-              >
-                매입 (줄 돈)
-              </button>
+              <button onClick={() => setViewType('SALES')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}>매출 (받을 돈)</button>
+              <button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}>매입 (줄 돈)</button>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-700">조회 기간</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 border rounded text-xs" />
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 border rounded text-xs" />
-            </div>
+            <div className="space-y-2"><label className="text-xs font-bold text-gray-700">조회 기간</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 border rounded text-xs" /><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 border rounded text-xs" /></div>
             
             <div className="space-y-2">
                <label className="text-xs font-bold text-gray-700">거래처(상호) 선택</label>
-               <select 
-                value={selectedClientName} 
-                onChange={(e) => setSelectedClientName(e.target.value)} 
-                disabled={userRole === 'PARTNER'} 
-                className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}
-              >
+               <select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} disabled={userRole === 'PARTNER'} className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}>
                 {userRole === 'ADMIN' && <option value="전체">전체 거래처</option>}
                 {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
               </select>
             </div>
 
             <hr className="border-gray-200 my-2" />
-            
             <div className="space-y-2">
-              {/* 🔥 [수정] 엑셀 다운로드 (이름 변경) */}
-              <button 
-                onClick={handleDownloadExcel} 
-                className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                엑셀로 다운로드
-              </button>
-
-              {/* 🔥 [수정] 이미지 복사 버튼 추가 */}
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={handleCopyImage} 
-                  className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                >
-                  {isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                  {isCopied ? '복사됨!' : '이미지 복사'}
-                </button>
-                <button 
-                  onClick={handlePrint} 
-                  className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"
-                >
-                  <Printer className="w-3 h-3" />
-                  인쇄
-                </button>
-              </div>
+              <button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"><FileSpreadsheet className="w-4 h-4" />엑셀로 다운로드</button>
+              <div className="grid grid-cols-2 gap-2"><button onClick={handleCopyImage} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>{isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}{isCopied ? '복사됨!' : '이미지 복사'}
+              </button><button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"><Printer className="w-3 h-3" />인쇄</button></div>
             </div>
           </div>
         </div>
