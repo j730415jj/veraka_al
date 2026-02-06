@@ -36,33 +36,76 @@ const App: React.FC = () => {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
+  // 🔥 [알람 강화] 소리 파일 준비
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<any>(null); 
+  const wakeLockRef = useRef<any>(null); // 화면 꺼짐 방지용
 
   useEffect(() => {
+    // 📢 1. 소리 파일 로드 (크고 잘 들리는 비프음)
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
-    if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+
+    // 📢 2. 브라우저 알림 권한 요청
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
     
+    // 📢 3. [중요] 기사님이 화면을 한 번이라도 터치하면 소리/화면켜짐 기능 활성화
     const unlockAudioAndScreen = async () => {
+      // 소리 잠금 해제 (무음으로 한번 재생해서 브라우저 권한 획득)
       if(audioRef.current) {
-        audioRef.current.volume = 0; 
-        audioRef.current.play().catch(() => {});
+        audioRef.current.volume = 1.0; // 볼륨 최대
+        audioRef.current.play().then(() => {
+          audioRef.current?.pause();
+          audioRef.current!.currentTime = 0;
+        }).catch(() => {});
       }
-      try { if ('wakeLock' in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
+
+      // 화면 꺼짐 방지 (Wake Lock)
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log("화면 꺼짐 방지 활성화됨");
+        }
+      } catch (err) {
+        console.log("화면 제어 권한 없음 (무시 가능)");
+      }
+
+      // 이벤트 리스너 제거 (한 번만 실행하면 됨)
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
+
     document.addEventListener('click', unlockAudioAndScreen);
     document.addEventListener('touchstart', unlockAudioAndScreen);
   }, []);
 
+  // 🔔 실제 알람 울리는 함수
   const playAlertSound = (title: string, body: string) => {
     try {
-      if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(e => console.warn(e)); }
-      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]); 
-      if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: '/vite.svg' });
-    } catch (e) { console.error(e); }
+      // 1. 소리 재생
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.warn("소리 재생 실패 (사용자 인터랙션 필요):", error);
+          });
+        }
+      }
+
+      // 2. 진동 (징- 징- 징- 징- 징-) 5번 울림
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]); 
+      }
+
+      // 3. 상단 푸시 알림
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body, icon: '/vite.svg' });
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   useEffect(() => {
@@ -83,7 +126,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user]);
 
-  // 실시간 감지
+  // 🔥 실시간 감지 & 알람 트리거
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('global-changes')
@@ -104,9 +147,12 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
+
+            // 🔥 [여기가 핵심] 내 차 번호와 똑같은 배차가 들어오면 알람 발사!
             if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
-              playAlertSound("🔔 새 배차 알림", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
-              setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}`), 200);
+              playAlertSound("🔔 [배차 도착] 새 오더가 있습니다!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
+              // 화면에 팝업 띄우기 (이게 뜨면 화면이 켜지기도 함)
+              setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
             }
           } 
           else if (payload.eventType === 'UPDATE') {
@@ -119,9 +165,10 @@ const App: React.FC = () => {
                 return d;
             }));
             const oldStatus = (payload.old as any).status;
+            // 관리자에게 완료 알림
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
                playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo} / 송장 등록됨`);
-               setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 300);
+               // setTimeout(() => alert(`✅ [운행 완료]\n차량: ${updated.vehicleNo}\n송장 등록됨`), 300); // 관리자는 팝업 귀찮으면 주석처리
             }
           }
           else if (payload.eventType === 'DELETE') {
@@ -311,7 +358,6 @@ const App: React.FC = () => {
       case ViewType.VEHICLE_REPORT: 
         return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
         
-      // 🔥 [수정] 둘 다 vehicles를 넘겨주도록 통일!
       case ViewType.COMPANY_REPORT: 
         return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 

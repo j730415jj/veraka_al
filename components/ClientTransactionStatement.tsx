@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Printer, FileSpreadsheet, Copy, Check } from 'lucide-react';
 import { Operation, Client, Vehicle } from '../types';
+import * as XLSX from 'xlsx'; // 엑셀 다운로드 기능
 
 interface Props {
   operations: Operation[];
   clients: Client[];
-  vehicles: Vehicle[];     // 🔥 차량 정보 필수로 설정
+  vehicles: Vehicle[];     // 🔥 차량 정보 필수로 받음
   userRole?: string;       
   userIdentifier?: string; 
 }
@@ -56,16 +57,42 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
-  // 차주명 찾기 헬퍼
+  // 차주명 찾기 헬퍼 함수
   const getOwnerName = (vNo: string) => {
     const found = vehicles.find(v => v.vehicleNo === vNo);
     return found ? found.ownerName : '';
   };
 
+  // 엑셀 다운로드 (진짜 파일 생성)
   const handleDownloadExcel = () => {
+    const excelData = filteredData.map(row => ({
+      '일자': row.date.split('T')[0],
+      '지점': row.branchName || '-',
+      '상차지': row.origin,
+      '하차지': row.destination,
+      '품명': row.item,
+      '차량번호': row.vehicleNo,
+      '차주명': getOwnerName(row.vehicleNo), // 차주명도 엑셀에 포함
+      '수량': row.quantity,
+      '공급가액': Number(row.supplyPrice),
+      '세액': Number(row.tax),
+      '합계금액': Number(row.totalAmount)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    worksheet['!cols'] = [
+      { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, 
+      { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 15 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "거래내역");
+
     const branchText = selectedBranch === '전체' ? '' : `(${selectedBranch})`;
-    const fileName = `${selectedClientName}${branchText}_거래내역서.xlsx`;
-    alert(`[엑셀 다운로드 요청]\n파일: ${fileName}\n데이터: ${filteredData.length}건`);
+    const typeText = viewType === 'SALES' ? '매출' : '매입';
+    const fileName = `${selectedClientName}${branchText}_${typeText}내역서_${startDate}_${endDate}.xlsx`;
+    
+    XLSX.writeFile(workbook, fileName);
   };
 
   const handleCopy = () => {
@@ -84,8 +111,10 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
     <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
         
+        {/* 🔥 [디자인 수정] 여백 p-6 -> p-4 로 축소 */}
         <div className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
           
+          {/* 🔥 [디자인 수정] 헤더 배경/글자색: 회색/검정으로 통일 */}
           <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
             거 래 처 별 거 래 명 세 서 <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
@@ -117,6 +146,7 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
             <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">
               {viewType === 'SALES' ? '청구 금액' : '지급 금액'}
             </div>
+            {/* 🔥 [디자인 수정] 금액 배경 회색으로 */}
             <div className="w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold bg-gray-50 print:bg-transparent">
               {grandTotal.toLocaleString()}
             </div>
@@ -125,6 +155,7 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
           <div className="w-full mb-1">
             <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
               <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
+              {/* 🔥 [디자인 수정] 테이블 헤더 회색 */}
               <thead className="bg-gray-100 font-bold print:bg-gray-100">
                 <tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">지점/상차</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr>
               </thead>
@@ -155,6 +186,7 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
                 ))}
               </tbody>
               <tfoot className="font-bold border-t-2 border-black">
+                {/* 🔥 [디자인 수정] 합계 배경 회색 */}
                 <tr className="bg-gray-100 print:bg-transparent">
                   <td className="border border-black py-1" colSpan={6}>합 계</td>
                   <td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td>
@@ -222,6 +254,16 @@ export default function ClientTransactionStatement({ operations, clients, vehicl
                 {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
               </select>
             </div>
+
+            {availableBranches.length > 0 && (
+              <div className="space-y-2 bg-blue-50 p-2 rounded border border-blue-100">
+                 <label className="text-xs font-bold text-blue-700 flex items-center gap-1"><Check className="w-3 h-3"/> 지점 선택 (옵션)</label>
+                 <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="w-full p-2 border rounded text-sm font-bold text-slate-700 bg-white">
+                  <option value="전체">전체 지점 합산</option>
+                  {availableBranches.map((branch, idx) => (<option key={idx} value={branch}>{branch}</option>))}
+                </select>
+              </div>
+            )}
 
             <hr className="border-gray-200 my-2" />
             <div className="space-y-2"><button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"><FileSpreadsheet className="w-4 h-4" />엑셀로 추출하기</button><div className="grid grid-cols-2 gap-2"><button onClick={handleCopy} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'}`}>{isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{isCopied ? '완료' : '내용 복사'}</button><button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"><Printer className="w-3 h-3" />인쇄</button></div></div>
