@@ -1,26 +1,13 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
+// PC용 컬럼 너비 설정
 const colWidths = {
-  check: 'w-[40px]', 
-  date: 'w-[80px]',
-  vehicle: 'w-[100px]',
-  client: 'w-[120px]',
-  branch: 'w-[100px]',
-  clientPrice: 'w-[100px]',
-  origin: 'w-[150px]',
-  dest: 'w-[150px]',
-  unitPrice: 'w-[100px]',
-  item: 'w-[120px]',
-  qty: 'w-[80px]',
-  supply: 'w-[110px]',
-  tax: 'w-[100px]',
-  total: 'w-[120px]',
-  photo: 'w-[100px]', 
-  trans: 'w-[70px]', 
-  invoice: 'w-[70px]',
-  remarks: 'w-[200px]',
-  manage: 'w-[100px]',
+  check: 'w-[40px]', date: 'w-[80px]', vehicle: 'w-[100px]', client: 'w-[120px]',
+  branch: 'w-[100px]', clientPrice: 'w-[100px]', origin: 'w-[150px]', dest: 'w-[150px]',
+  unitPrice: 'w-[100px]', item: 'w-[120px]', qty: 'w-[80px]', supply: 'w-[110px]',
+  tax: 'w-[100px]', total: 'w-[120px]', photo: 'w-[100px]', trans: 'w-[70px]',
+  invoice: 'w-[70px]', remarks: 'w-[200px]', manage: 'w-[100px]',
 };
 
 interface Props {
@@ -35,27 +22,29 @@ interface Props {
 }
 
 const OperationEntryView: React.FC<Props> = ({ 
-  user,
-  operations, 
-  vehicles, 
-  clients, 
-  unitPriceMaster,
-  onAddOperation, 
-  onUpdateOperation, 
-  onDeleteOperation 
+  user, operations, vehicles, clients, unitPriceMaster,
+  onAddOperation, onUpdateOperation, onDeleteOperation 
 }) => {
-  const isPartner = user.role === 'PARTNER';
+  // 사용자 권한 확인
+  const isPartner = user.role === 'PARTNER'; // 협력업체
+  const isAdmin = user.role === 'ADMIN';     // 관리자
+  const isVehicle = user.role === 'VEHICLE'; // 기사님
 
+  // 🔥 화면 모드 결정 (기사님/협력업체는 앱 모드, 관리자는 선택 가능)
+  const [isAppMode, setIsAppMode] = useState(isVehicle || isPartner);
+
+  // 검색 필터 상태
   const [filterDate, setFilterDate] = useState('');
   const [filterVehicle, setFilterVehicle] = useState('');
   const [filterClient, setFilterClient] = useState(isPartner ? user.identifier : '');
   const [filterBranch, setFilterBranch] = useState('');
-  const [filterOrigin, setFilterOrigin] = useState('');
-  const [filterDestination, setFilterDestination] = useState('');
-  const [filterRemarks, setFilterRemarks] = useState('');
+  
+  // 편집 및 상태
   const [editTarget, setEditTarget] = useState<Operation | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewingOp, setViewingOp] = useState<Operation | null>(null);
+  
+  // 이미지 뷰어 상태
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -63,36 +52,31 @@ const OperationEntryView: React.FC<Props> = ({
   const dragStart = useRef({ x: 0, y: 0 });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // 🔥 [앱 모드 전용] 배차 등록 모달 상태
+  const [isAppAdding, setIsAppAdding] = useState(false);
+
+  // 신규 등록 데이터
   const [newEntry, setNewEntry] = useState<Partial<Operation>>({
     date: new Date().toISOString().split('T')[0],
-    vehicleNo: '', clientName: isPartner ? user.identifier : '', branchName: '', 
-    clientUnitPrice: 0, origin: '', destination: '', unitPrice: 0, item: '', quantity: 0,
-    remarks: '', settlementStatus: 'PENDING', isVatIncluded: false, isInvoiceIssued: false
+    vehicleNo: isVehicle ? user.identifier : '', // 기사님은 본인 차 고정
+    clientName: isPartner ? user.identifier : '', // 협력업체는 본인 상호 고정
+    branchName: '', clientUnitPrice: 0, origin: '', destination: '', unitPrice: 0, 
+    item: '', quantity: 0, remarks: '', settlementStatus: 'PENDING', 
+    isVatIncluded: false, isInvoiceIssued: false
   });
+
+  // 데이터 메모이제이션 (자동완성용)
+  const memory = useMemo(() => ({
+    origins: Array.from(new Set(operations.map(op => op.origin))).filter(Boolean).sort(),
+    destinations: Array.from(new Set(operations.map(op => op.destination))).filter(Boolean).sort(),
+    items: Array.from(new Set(operations.map(op => op.item))).filter(Boolean).sort(),
+    vehicles: Array.from(new Set(operations.map(op => op.vehicleNo))).filter(Boolean).sort(),
+    branches: Array.from(new Set(operations.map(op => op.branchName))).filter(Boolean).sort()
+  }), [operations]);
 
   const clientNames = useMemo(() => clients.map(c => c.clientName).sort(), [clients]);
 
-  const availableBranchesForNew = useMemo(() => {
-    const client = clients.find(c => c.clientName === newEntry.clientName);
-    return client?.branches || [];
-  }, [clients, newEntry.clientName]);
-
-  const availableBranchesForEdit = useMemo(() => {
-    if (!editTarget) return [];
-    const client = clients.find(c => c.clientName === editTarget.clientName);
-    return client?.branches || [];
-  }, [clients, editTarget?.clientName]);
-
-  const memory = useMemo(() => {
-    return {
-      origins: Array.from(new Set(operations.map(op => op.origin))).filter(Boolean).sort(),
-      destinations: Array.from(new Set(operations.map(op => op.destination))).filter(Boolean).sort(),
-      items: Array.from(new Set(operations.map(op => op.item))).filter(Boolean).sort(),
-      vehicles: Array.from(new Set(operations.map(op => op.vehicleNo))).filter(Boolean).sort(),
-      branches: Array.from(new Set(operations.map(op => op.branchName))).filter(Boolean).sort()
-    };
-  }, [operations]);
-
+  // 가격 계산 로직
   const calculatePrices = (unitPrice: number, qty: number) => {
     const supplyPrice = Math.round(unitPrice * qty);
     const tax = Math.round(supplyPrice * 0.1);
@@ -100,10 +84,18 @@ const OperationEntryView: React.FC<Props> = ({
     return { supplyPrice, tax, totalAmount };
   };
 
+  // 입력값 변경 핸들러
   const handleNewEntryChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const finalValue = type === 'number' ? Number(value) : value;
-    if (name === 'clientName') { setNewEntry(prev => ({ ...prev, clientName: value, branchName: '' })); return; }
+    
+    // 거래처 변경 시 지점 초기화
+    if (name === 'clientName') { 
+        setNewEntry(prev => ({ ...prev, clientName: value, branchName: '' })); 
+        return; 
+    }
+
+    // 단가표 자동 매칭 (지점, 상차지, 하차지 변경 시)
     if (name === 'branchName' || name === 'origin' || name === 'destination') {
       const updated = { ...newEntry, [name]: finalValue };
       const matched = unitPriceMaster.find(up => 
@@ -113,15 +105,23 @@ const OperationEntryView: React.FC<Props> = ({
         up.destination === (name === 'destination' ? finalValue : updated.destination)
       );
       if (matched) {
-        setNewEntry(prev => ({ ...prev, [name]: finalValue, unitPrice: matched.unitPrice, clientUnitPrice: matched.clientUnitPrice, item: matched.item || prev.item }));
+        setNewEntry(prev => ({ 
+            ...prev, [name]: finalValue, 
+            unitPrice: matched.unitPrice, 
+            clientUnitPrice: matched.clientUnitPrice, 
+            item: matched.item || prev.item 
+        }));
         return;
       }
     }
     setNewEntry(prev => ({ ...prev, [name]: finalValue }));
   };
 
+  // 배차 등록 실행
   const handleAdd = () => {
-    if (!newEntry.vehicleNo || !newEntry.clientName) { alert('차량번호와 거래처명은 필수입니다.'); return; }
+    if (!newEntry.vehicleNo && !isVehicle) { alert('차량번호는 필수입니다.'); return; }
+    if (!newEntry.clientName) { alert('거래처명은 필수입니다.'); return; }
+    
     const { supplyPrice, tax, totalAmount } = calculatePrices(newEntry.unitPrice || 0, newEntry.quantity || 0);
     const op: Operation = {
       ...newEntry as Operation,
@@ -131,89 +131,236 @@ const OperationEntryView: React.FC<Props> = ({
     };
     onAddOperation(op);
     setNewEntry(prev => ({ ...prev, quantity: 0, remarks: '', isInvoiceIssued: false }));
-    if (scrollContainerRef.current) scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (!editTarget) return;
-    const { name, value, type } = e.target;
-    const finalValue = type === 'number' ? Number(value) : value;
-    if (name === 'clientName') { setEditTarget({ ...editTarget, clientName: value, branchName: '' }); return; }
-    const updatedTarget = { ...editTarget, [name]: finalValue };
-    if (name === 'unitPrice' || name === 'quantity') {
-      const { supplyPrice, tax, totalAmount } = calculatePrices(updatedTarget.unitPrice, updatedTarget.quantity);
-      updatedTarget.supplyPrice = supplyPrice;
-      updatedTarget.tax = tax;
-      updatedTarget.totalAmount = totalAmount;
+    
+    // 앱 모드에서는 등록 후 창 닫기
+    if (isAppMode) {
+        setIsAppAdding(false);
+        alert('배차가 등록되었습니다.');
+    } else {
+        if (scrollContainerRef.current) scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    setEditTarget(updatedTarget);
   };
 
-  const handleInlineUpdate = () => { if (editTarget) { onUpdateOperation(editTarget); setEditTarget(null); } };
-
-  const toggleInvoice = (op: Operation) => {
-    onUpdateOperation({ ...op, isInvoiceIssued: !op.isInvoiceIssued });
-  };
-
-  const toggleSettlement = (op: Operation) => {
-    const newStatus = op.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED';
-    onUpdateOperation({ ...op, settlementStatus: newStatus });
-  };
-
+  // 목록 필터링
   const filteredOperations = useMemo(() => {
-    return operations.filter(op => 
-      op.date.includes(filterDate) &&
-      op.vehicleNo.toLowerCase().includes(filterVehicle.toLowerCase()) &&
-      op.clientName.toLowerCase().includes(filterClient.toLowerCase()) &&
-      (op.branchName || '').toLowerCase().includes(filterBranch.toLowerCase()) &&
-      op.origin.toLowerCase().includes(filterOrigin.toLowerCase()) &&
-      op.destination.toLowerCase().includes(filterDestination.toLowerCase()) &&
-      (op.remarks || '').toLowerCase().includes(filterRemarks.toLowerCase())
-    );
-  }, [operations, filterDate, filterVehicle, filterClient, filterBranch, filterOrigin, filterDestination, filterRemarks]);
+    return operations.filter(op => {
+      // 기사님은 본인 차만, 협력업체는 본인 거래처만 조회 (보안)
+      if (isVehicle && op.vehicleNo !== user.identifier) return false;
+      if (isPartner && op.clientName !== user.identifier) return false;
 
-  const handleViewerQuantityChange = (newQty: number) => {
-    if (!viewingOp) return;
-    const { supplyPrice, tax, totalAmount } = calculatePrices(viewingOp.unitPrice, newQty);
-    const updated = { ...viewingOp, quantity: newQty, supplyPrice, tax, totalAmount };
-    setViewingOp(updated);
-  };
+      return (
+        op.date.includes(filterDate) &&
+        op.vehicleNo.toLowerCase().includes(filterVehicle.toLowerCase()) &&
+        op.clientName.toLowerCase().includes(filterClient.toLowerCase()) &&
+        (op.branchName || '').toLowerCase().includes(filterBranch.toLowerCase())
+      );
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // 최신순 정렬
+  }, [operations, filterDate, filterVehicle, filterClient, filterBranch, isVehicle, isPartner, user]);
 
-  const handleSaveFromViewer = () => {
-    if (viewingOp) { onUpdateOperation(viewingOp); alert('수정사항이 저장되었습니다.'); setViewingOp(null); }
-  };
-
-  const handleDownload = () => {
-    if (!viewingOp?.invoicePhoto) return;
-    const link = document.createElement('a'); link.href = viewingOp.invoicePhoto; link.download = `송장_${viewingOp.vehicleNo}_${viewingOp.date}.jpg`; link.click();
-  };
-
-  const handleBulkShare = async () => {
-    if (selectedIds.length === 0) return alert("선택된 항목이 없습니다.");
-    const targets = operations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
-    if (targets.length === 0) return alert("선택된 항목 중 공유할 송장 사진이 없습니다.");
-    try {
-      const filesArray: File[] = [];
-      for (const op of targets) {
-        const arr = op.invoicePhoto!.split(','); const mime = arr[0].match(/:(.*?);/)?.[1];
-        const bstr = atob(arr[1]); let n = bstr.length; const u8arr = new Uint8Array(n);
-        while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-        filesArray.push(new File([u8arr], `${op.date}_${op.vehicleNo}_${op.id.slice(0,4)}.jpg`, { type: mime }));
-      }
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
-        await navigator.share({ files: filesArray });
-        targets.forEach(op => { onUpdateOperation({ ...op, settlementStatus: 'SHARED' }); });
-        setSelectedIds([]); 
-      } else { alert("이 브라우저는 일괄 공유를 지원하지 않습니다."); }
-    } catch (e) { console.error(e); }
-  };
-
-  const toggleSelection = (id: string) => { setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
+  // 이미지 뷰어 관련
   const handleWheel = (e: React.WheelEvent) => { e.preventDefault(); const delta = e.deltaY > 0 ? -0.2 : 0.2; setZoom(prev => Math.min(Math.max(0.5, prev + delta), 5)); };
   const handleMouseDown = (e: React.MouseEvent) => { if (zoom <= 1) return; setIsDragging(true); dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y }; };
   const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); };
   const handleMouseUp = () => setIsDragging(false);
+  const handleDownload = () => { if (!viewingOp?.invoicePhoto) return; const link = document.createElement('a'); link.href = viewingOp.invoicePhoto; link.download = `송장_${viewingOp.vehicleNo}.jpg`; link.click(); };
 
+  // ------------------------------------------------------------------
+  // 🔥 1. 앱 모드 (카드형 UI) - 기사님/협력업체/관리자 모바일용
+  // ------------------------------------------------------------------
+  if (isAppMode) {
+    return (
+      <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 p-4 overflow-hidden relative">
+        
+        {/* 상단 헤더 & 필터 */}
+        <div className="flex justify-between items-center mb-4 shrink-0">
+            <h2 className="text-xl font-black text-slate-800 dark:text-white">
+                {isPartner ? '협력업체 배차관리' : '배차 및 운행내역'}
+            </h2>
+            <div className="flex gap-2">
+                {/* 관리자용 전환 버튼 */}
+                {isAdmin && (
+                    <button onClick={() => setIsAppMode(false)} className="bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold">
+                        🖥️ PC모드
+                    </button>
+                )}
+                <button onClick={() => setIsAppAdding(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold shadow-lg active:scale-95 transition-transform">
+                    ➕ 배차 등록
+                </button>
+            </div>
+        </div>
+
+        {/* 날짜 필터 */}
+        <div className="mb-4 shrink-0">
+            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 font-bold bg-white dark:bg-slate-800 dark:text-white shadow-sm" />
+        </div>
+
+        {/* 카드 리스트 */}
+        <div className="flex-1 overflow-y-auto space-y-4 pb-20 custom-scrollbar">
+            {filteredOperations.length > 0 ? (
+                filteredOperations.map(op => (
+                    <div key={op.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 relative overflow-hidden group">
+                        {/* 상태 뱃지 */}
+                        <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider ${op.settlementStatus === 'SHARED' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                            {op.settlementStatus === 'SHARED' ? '완료됨' : '대기중'}
+                        </div>
+
+                        {/* 날짜 & 차량 */}
+                        <div className="flex items-center gap-3 mb-3">
+                            <span className="text-xs font-black text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">{op.date.slice(5)}</span>
+                            <span className="text-lg font-black text-slate-800 dark:text-white">{op.vehicleNo}</span>
+                        </div>
+
+                        {/* 경로 (상차지 -> 하차지) */}
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl text-center">
+                                <span className="block text-[10px] text-slate-400 font-bold">상차</span>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">{op.origin}</span>
+                            </div>
+                            <span className="text-slate-300">➜</span>
+                            <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl text-center">
+                                <span className="block text-[10px] text-slate-400 font-bold">하차</span>
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">{op.destination}</span>
+                            </div>
+                        </div>
+
+                        {/* 상세 정보 (품명, 수량, 금액) */}
+                        <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-xl">
+                                <span className="block text-[10px] text-blue-400 font-bold">품명</span>
+                                <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{op.item}</span>
+                            </div>
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded-xl">
+                                <span className="block text-[10px] text-blue-400 font-bold">수량</span>
+                                <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{op.quantity}t</span>
+                            </div>
+                            <div className="bg-rose-50 dark:bg-rose-900/20 p-2 rounded-xl">
+                                <span className="block text-[10px] text-rose-400 font-bold">합계</span>
+                                <span className="text-sm font-bold text-rose-600 dark:text-rose-400">{(isPartner ? Math.round(op.clientUnitPrice * op.quantity * 1.1) : op.totalAmount).toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        {/* 송장 사진 (터치하면 확대) */}
+                        {op.invoicePhoto ? (
+                            <div 
+                                onClick={() => { setViewingOp(op); setZoom(1); }}
+                                className="w-full h-12 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-transform"
+                            >
+                                <span className="text-xl">📸</span>
+                                <span className="text-xs font-bold text-slate-500">송장 사진 확인하기</span>
+                            </div>
+                        ) : (
+                            <div className="w-full h-12 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center text-xs text-slate-400 font-bold">
+                                송장 미등록
+                            </div>
+                        )}
+                        
+                        {/* 관리자용 삭제 버튼 */}
+                        {isAdmin && (
+                            <button onClick={() => { if(window.confirm('삭제하시겠습니까?')) onDeleteOperation(op.id); }} className="absolute bottom-2 right-2 text-red-400 text-xs p-2">삭제</button>
+                        )}
+                    </div>
+                ))
+            ) : (
+                <div className="flex flex-col items-center justify-center h-60 text-slate-400 opacity-50">
+                    <span className="text-4xl mb-2">📭</span>
+                    <span className="font-bold">내역이 없습니다.</span>
+                </div>
+            )}
+        </div>
+
+        {/* 🔥 배차 등록 모달 (앱용) */}
+        {isAppAdding && (
+            <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 flex flex-col p-6 animate-in slide-in-from-bottom duration-300">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">새 배차 등록</h3>
+                    <button onClick={() => setIsAppAdding(false)} className="text-slate-400 p-2">✕</button>
+                </div>
+                
+                <div className="flex-1 space-y-4 overflow-y-auto">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 ml-1">날짜</label>
+                        <input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold dark:text-white" />
+                    </div>
+                    {!isVehicle && (
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">차량번호</label>
+                            <input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} placeholder="차량번호 입력" className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold dark:text-white" />
+                        </div>
+                    )}
+                    {!isPartner && (
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">거래처</label>
+                            <select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold dark:text-white">
+                                <option value="">거래처 선택</option>
+                                {clientNames.map(name => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">상차지</label>
+                            <input type="text" name="origin" list="past-origins" value={newEntry.origin} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-center dark:text-white" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">하차지</label>
+                            <input type="text" name="destination" list="past-destinations" value={newEntry.destination} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-center dark:text-white" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">품명</label>
+                            <input type="text" name="item" list="past-items" value={newEntry.item} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-center dark:text-white" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 ml-1">수량 (t)</label>
+                            <input type="number" step="0.01" name="quantity" value={newEntry.quantity} onChange={handleNewEntryChange} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl font-bold text-center dark:text-white" />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 ml-1">비고</label>
+                        <input type="text" name="remarks" value={newEntry.remarks} onChange={handleNewEntryChange} placeholder="특이사항 입력" className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl dark:text-white" />
+                    </div>
+                </div>
+
+                <button onClick={handleAdd} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl mt-4">
+                    등록 완료
+                </button>
+            </div>
+        )}
+
+        {/* 데이터 리스트 (자동완성용) */}
+        <datalist id="past-origins">{memory.origins.map(o => <option key={o} value={o} />)}</datalist>
+        <datalist id="past-destinations">{memory.destinations.map(d => <option key={d} value={d} />)}</datalist>
+        <datalist id="past-items">{memory.items.map(i => <option key={i} value={i} />)}</datalist>
+        <datalist id="past-vehicles">{memory.vehicles.map(v => <option key={v} value={v} />)}</datalist>
+
+        {/* 이미지 뷰어 (앱용) */}
+        {viewingOp && (
+            <div className="fixed inset-0 z-[100] bg-black flex flex-col justify-center animate-in fade-in">
+                <button onClick={() => setViewingOp(null)} className="absolute top-4 right-4 text-white p-4 z-50">✕ 닫기</button>
+                <div className="flex-1 overflow-hidden flex items-center justify-center" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={handleWheel}>
+                    <img 
+                        src={viewingOp.invoicePhoto} 
+                        style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${zoom}) rotate(${rotation}deg)` }} 
+                        className="max-w-full max-h-full object-contain" 
+                    />
+                </div>
+                <div className="h-20 bg-slate-900 flex justify-center items-center gap-8">
+                    <button onClick={() => setRotation(r => r - 90)} className="text-white p-4">↺</button>
+                    <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="text-white p-4">－</button>
+                    <button onClick={() => setZoom(z => Math.min(5, z + 0.5))} className="text-white p-4">＋</button>
+                    <button onClick={() => setRotation(r => r + 90)} className="text-white p-4">↻</button>
+                    <button onClick={handleDownload} className="text-emerald-400 font-bold p-4">저장</button>
+                </div>
+            </div>
+        )}
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // 🔥 2. PC 모드 (기존 테이블 화면) - 관리자 전용
+  // ------------------------------------------------------------------
   return (
     <div className="flex flex-col h-full space-y-3 p-4 overflow-hidden relative">
       <datalist id="past-origins">{memory.origins.map(o => <option key={o} value={o} />)}</datalist>
@@ -222,33 +369,31 @@ const OperationEntryView: React.FC<Props> = ({
       <datalist id="past-vehicles">{memory.vehicles.map(v => <option key={v} value={v} />)}</datalist>
       <datalist id="past-branches">{memory.branches.map(b => <option key={b} value={b} />)}</datalist>
 
-      {/* 👇 [수정됨] 모바일: 2열 / PC: 7열 배치로 공간 확보 */}
+      {/* 필터 박스 */}
       <div className="bg-white dark:bg-slate-900 p-3 md:p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 no-print transition-colors shrink-0">
+        <div className="flex justify-between mb-2">
+            <h3 className="font-bold text-slate-600 dark:text-slate-300">PC 관리자 모드</h3>
+            <button onClick={() => setIsAppMode(true)} className="bg-slate-100 px-3 py-1 rounded text-xs font-bold hover:bg-slate-200">📱 앱 모드로 전환</button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-7 gap-2 md:gap-4 mb-2">
           {[
             { label: '일자 검색', val: filterDate, set: setFilterDate, ph: 'YYYY-MM-DD' },
             { label: '차량번호', val: filterVehicle, set: setFilterVehicle, ph: '차량번호', list: 'past-vehicles' },
             { label: '거래처명', val: filterClient, set: setFilterClient, ph: '거래처', disabled: isPartner },
             { label: '지점명', val: filterBranch, set: setFilterBranch, ph: '지점명', list: 'past-branches' },
-            { label: '상차지 검색', val: filterOrigin, set: setFilterOrigin, ph: '상차지', list: 'past-origins' },
-            { label: '하차지 검색', val: filterDestination, set: setFilterDestination, ph: '하차지', list: 'past-destinations' },
-            { label: '비고 검색', val: filterRemarks, set: setFilterRemarks, ph: '비고 내용' }
           ].map((f, i) => (
             <div key={i} className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 dark:text-slate-600 ml-1">{f.label}</label>
-              <input type="text" placeholder={f.ph} list={f.list} value={f.val} onChange={e => f.set(e.target.value)} disabled={(f as any).disabled} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 md:px-3 md:py-2 text-xs outline-none focus:ring-1 focus:ring-blue-500 dark:text-slate-100 disabled:opacity-50" />
+              <input type="text" placeholder={f.ph} list={(f as any).list} value={f.val} onChange={e => f.set(e.target.value)} disabled={(f as any).disabled} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none" />
             </div>
           ))}
         </div>
         <div className="flex justify-end items-center mt-2">
-          <div className="flex space-x-2">
-            <button onClick={handleBulkShare} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"><span>📤</span><span>공유 ({selectedIds.length})</span></button>
-            <button onClick={() => { setFilterDate(''); setFilterVehicle(''); !isPartner && setFilterClient(''); setFilterBranch(''); setFilterOrigin(''); setFilterDestination(''); setFilterRemarks(''); }} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold transition">초기화</button>
-            <button className="bg-[#2563eb] hover:bg-blue-700 text-white px-4 py-1.5 md:px-6 md:py-2 rounded-lg text-xs font-black shadow-sm">조회하기</button>
-          </div>
+            <button className="bg-[#2563eb] hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-black shadow-sm">조회하기</button>
         </div>
       </div>
 
+      {/* 테이블 영역 */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col transition-colors min-h-0 relative">
         <div ref={scrollContainerRef} className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
           <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[1850px]">
@@ -268,194 +413,72 @@ const OperationEntryView: React.FC<Props> = ({
                 <th className={`${colWidths.tax} px-2 py-3`}>세액</th>
                 <th className={`${colWidths.total} px-2 py-3`}>합계금액</th>
                 <th className={`${colWidths.photo} px-2 py-3`}>송장 / 선택</th>
-                <th className={`${colWidths.trans} px-2 py-3`}>전송완료</th>
-                <th className={`${colWidths.invoice} px-2 py-3`}>송장상태</th>
-                <th className={`${colWidths.remarks} px-2 py-3`}>비고</th>
                 <th className={`${colWidths.manage} px-2 py-3`}>관리</th>
               </tr>
             </thead>
             
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
-                <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs" /></td>
-                <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center font-bold" /></td>
-                <td className="p-1"><select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold"><option value="">거래처</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
-                <td className="p-1"><select name="branchName" value={newEntry.branchName} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-0.5 py-1 text-xs font-bold"><option value="">지점 선택</option>{availableBranchesForNew.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></td>
-                <td className="p-1"><input type="number" name="clientUnitPrice" value={newEntry.clientUnitPrice} onChange={handleNewEntryChange} className="w-full bg-rose-50 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900 rounded px-1 py-1 text-xs text-right font-black text-rose-700" /></td>
-                <td className="p-1"><input type="text" name="origin" list="past-origins" value={newEntry.origin} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center" /></td>
-                <td className="p-1"><input type="text" name="destination" list="past-destinations" value={newEntry.destination} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center" /></td>
-                {!isPartner && <td className="p-1"><input type="number" name="unitPrice" value={newEntry.unitPrice} onChange={handleNewEntryChange} className="w-full bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-200 dark:border-blue-900 rounded px-1 py-1 text-xs text-right font-black text-blue-700" /></td>}
-                <td className="p-1"><input type="text" name="item" list="past-items" value={newEntry.item} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs text-center" /></td>
-                <td className="p-1"><input type="number" step="0.01" name="quantity" value={newEntry.quantity} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-1 py-1 text-xs font-bold text-center" /></td>
-                <td className="p-2 text-slate-400 text-center font-bold">자동</td>
-                <td className="p-2 text-slate-400 text-center font-bold">자동</td>
-                <td className="p-2 text-slate-400 text-center font-bold">자동</td>
-                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">사진등록</td>
-                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800 text-[9px] text-slate-400">자동체크</td>
-                <td className="p-1 text-center bg-amber-50 dark:bg-slate-800"><button onClick={() => setNewEntry(prev => ({ ...prev, isInvoiceIssued: !prev.isInvoiceIssued }))} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${newEntry.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button></td>
-                <td className="p-1 bg-amber-50 dark:bg-slate-800"><input type="text" name="remarks" value={newEntry.remarks} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1.5 text-xs" /></td>
-                <td className="p-1 text-center"><button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white w-full py-1.5 rounded text-xs font-black shadow-md">등록</button></td>
-              </tr>
+                {/* 입력 행 */}
+                <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
+                    <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border rounded px-1 py-1 text-xs" /></td>
+                    <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center font-bold" /></td>
+                    <td className="p-1"><select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white border rounded px-0.5 py-1 text-xs font-bold"><option value="">거래처</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
+                    <td className="p-1"><select name="branchName" value={newEntry.branchName} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-0.5 py-1 text-xs font-bold"><option value="">지점</option></select></td>
+                    <td className="p-1"><input type="number" name="clientUnitPrice" value={newEntry.clientUnitPrice} onChange={handleNewEntryChange} className="w-full bg-rose-50 border-2 border-rose-200 rounded px-1 py-1 text-xs text-right font-black text-rose-700" /></td>
+                    <td className="p-1"><input type="text" name="origin" list="past-origins" value={newEntry.origin} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center" /></td>
+                    <td className="p-1"><input type="text" name="destination" list="past-destinations" value={newEntry.destination} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center" /></td>
+                    {!isPartner && <td className="p-1"><input type="number" name="unitPrice" value={newEntry.unitPrice} onChange={handleNewEntryChange} className="w-full bg-blue-50 border-2 border-blue-200 rounded px-1 py-1 text-xs text-right font-black text-blue-700" /></td>}
+                    <td className="p-1"><input type="text" name="item" list="past-items" value={newEntry.item} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center" /></td>
+                    <td className="p-1"><input type="number" step="0.01" name="quantity" value={newEntry.quantity} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs font-bold text-center" /></td>
+                    <td colSpan={3} className="p-2 text-center text-slate-400 font-bold">자동계산</td>
+                    <td className="p-1 text-center bg-amber-50 text-[9px] text-slate-400">사진</td>
+                    <td className="p-1 text-center"><button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white w-full py-1.5 rounded text-xs font-black shadow-md">등록</button></td>
+                </tr>
 
-              {filteredOperations.map((op) => {
-                const isEditing = editTarget?.id === op.id;
-                const displaySupply = isPartner ? Math.round(op.clientUnitPrice * op.quantity) : op.supplyPrice;
-                const displayTax = isPartner ? Math.round(displaySupply * 0.1) : op.tax;
-                const displayTotal = isPartner ? (displaySupply + displayTax) : op.totalAmount;
-                const isShared = op.settlementStatus === 'SHARED'; 
-
-                return (
-                  <tr key={op.id} className={`border-b dark:border-slate-800 transition-colors divide-x divide-slate-100 dark:divide-slate-800 ${isEditing ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`} onClick={() => !isEditing && setEditTarget(op)}>
-                    {isEditing ? (
-                      <>
-                        <td className="p-1"><input type="date" name="date" value={editTarget.date} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs" /></td>
-                        <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={editTarget.vehicleNo} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center font-bold" /></td>
-                        <td className="p-1"><select name="clientName" value={editTarget.clientName} onChange={handleEditChange} disabled={isPartner} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold">{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
-                        <td className="p-1"><select name="branchName" value={editTarget.branchName || ''} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-0.5 py-1 text-xs font-bold"><option value="">지점 선택</option>{availableBranchesForEdit.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></td>
-                        <td className="p-1"><input type="number" name="clientUnitPrice" value={editTarget.clientUnitPrice} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-right font-black text-rose-600" /></td>
-                        <td className="p-1"><input type="text" name="origin" list="past-origins" value={editTarget.origin} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center" /></td>
-                        <td className="p-1"><input type="text" name="destination" list="past-destinations" value={editTarget.destination} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center" /></td>
-                        {!isPartner && <td className="p-1"><input type="number" name="unitPrice" value={editTarget.unitPrice} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-right font-black text-blue-600" /></td>}
-                        <td className="p-1"><input type="text" name="item" list="past-items" value={editTarget.item} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs text-center" /></td>
-                        <td className="p-1"><input type="number" step="0.01" name="quantity" value={editTarget.quantity} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-1 py-1 text-xs font-black text-center" /></td>
-                        <td className="p-2 text-right font-bold text-slate-400">{displaySupply.toLocaleString()}</td>
-                        <td className="p-2 text-right font-bold text-slate-400">{displayTax.toLocaleString()}</td>
-                        <td className="p-2 text-right font-black text-blue-600">{displayTotal.toLocaleString()}</td>
-                        <td className="p-1 text-center">{op.invoicePhoto ? <img src={op.invoicePhoto} className="w-8 h-8 rounded border mx-auto" /> : <span className="text-slate-300">없음</span>}</td>
-                        <td className="p-1 text-center"><button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, settlementStatus: editTarget!.settlementStatus === 'SHARED' ? 'PENDING' : 'SHARED'}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.settlementStatus === 'SHARED' ? 'bg-emerald-500 text-white' : 'bg-slate-50'}`}>✔</button></td>
-                        <td className="p-1 text-center"><button onClick={(e) => { e.stopPropagation(); setEditTarget({...editTarget!, isInvoiceIssued: !editTarget!.isInvoiceIssued}) }} className={`w-7 h-7 rounded-lg border flex items-center justify-center mx-auto ${editTarget!.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-300'}`}>✔</button></td>
-                        <td className="p-1"><input type="text" name="remarks" value={editTarget!.remarks} onChange={handleEditChange} className="w-full bg-white dark:bg-slate-800 border border-blue-300 rounded px-2 py-1 text-xs" /></td>
-                        <td className="p-1 text-center space-x-1"><button onClick={(e) => { e.stopPropagation(); handleInlineUpdate(); }} className="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-black">저장</button><button onClick={(e) => { e.stopPropagation(); setEditTarget(null); }} className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-black">취소</button></td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-2 py-2.5 text-center text-slate-500 dark:text-slate-400">{op.date.slice(5)}</td>
-                        <td className="px-2 py-2.5 text-center font-bold dark:text-slate-200">{op.vehicleNo}</td>
-                        <td className="px-2 py-2.5 text-center font-bold text-rose-600 dark:text-rose-400">{op.clientName}</td>
-                        <td className="px-2 py-2.5 text-center font-medium text-slate-500 dark:text-slate-400">{op.branchName || '-'}</td>
-                        <td className="px-2 py-2.5 text-right font-bold text-rose-500 dark:text-rose-400">{op.clientUnitPrice.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-center truncate dark:text-slate-300">{op.origin}</td>
-                        <td className="px-2 py-2.5 text-center truncate dark:text-slate-300">{op.destination}</td>
-                        {!isPartner && <td className="px-2 py-2.5 text-right font-bold text-blue-600 dark:text-blue-400">{op.unitPrice.toLocaleString()}</td>}
-                        <td className="px-2 py-2.5 text-center dark:text-slate-300">{op.item}</td>
-                        <td className="px-2 py-2.5 text-center font-bold dark:text-slate-300">{op.quantity.toFixed(2)}</td>
-                        <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displaySupply.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-right font-bold text-rose-500">{displayTax.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-right font-black text-rose-600 dark:text-rose-400">{displayTotal.toLocaleString()}</td>
-                        
-                        {/* 👇 [수정됨] 사진 + 체크박스 오른쪽 칼정렬 */}
-                        <td className="px-2 py-1" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-between w-full px-1">
-                            {op.invoicePhoto ? (
-                              <img src={op.invoicePhoto} className="w-8 h-8 rounded border dark:border-slate-700 cursor-pointer hover:scale-110 transition-transform object-cover" onClick={() => { setViewingOp(op); setZoom(1); setPosition({x:0, y:0}); }} />
-                            ) : <span className="text-[9px] text-slate-300">없음</span>}
-                            
-                            <input 
-                                type="checkbox" 
-                                checked={selectedIds.includes(op.id)} 
-                                onChange={() => toggleSelection(op.id)} 
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                            />
-                          </div>
+                {/* 데이터 리스트 */}
+                {filteredOperations.map((op) => (
+                    <tr key={op.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors divide-x divide-slate-100 dark:divide-slate-800">
+                        <td className="px-2 py-2.5 text-center">{op.date.slice(5)}</td>
+                        <td className="px-2 py-2.5 text-center font-bold">{op.vehicleNo}</td>
+                        <td className="px-2 py-2.5 text-center font-bold text-rose-600">{op.clientName}</td>
+                        <td className="px-2 py-2.5 text-center font-medium">{op.branchName || '-'}</td>
+                        <td className="px-2 py-2.5 text-right font-bold text-rose-500">{op.clientUnitPrice.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-center truncate">{op.origin}</td>
+                        <td className="px-2 py-2.5 text-center truncate">{op.destination}</td>
+                        {!isPartner && <td className="px-2 py-2.5 text-right font-bold text-blue-600">{op.unitPrice.toLocaleString()}</td>}
+                        <td className="px-2 py-2.5 text-center">{op.item}</td>
+                        <td className="px-2 py-2.5 text-center font-bold">{op.quantity}</td>
+                        <td className="px-2 py-2.5 text-right font-bold text-slate-500">{op.supplyPrice.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-bold text-slate-500">{op.tax.toLocaleString()}</td>
+                        <td className="px-2 py-2.5 text-right font-black text-rose-600">{op.totalAmount.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-center">
+                            {op.invoicePhoto ? <img src={op.invoicePhoto} className="w-8 h-8 rounded border mx-auto cursor-pointer" onClick={() => { setViewingOp(op); setZoom(1); }} /> : <span className="text-slate-300">-</span>}
                         </td>
-
-                        {/* 👇 [수정됨] 전송완료 (녹색 버튼, 수동 체크 가능) */}
-                        <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleSettlement(op); }}>
-                           <button className={`w-6 h-6 rounded border transition-colors ${isShared ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
-                        </td>
-
-                        {/* 👇 [기존] 송장상태 (녹색 버튼) */}
-                        <td className="px-1 py-2 text-center" onClick={e => { e.stopPropagation(); toggleInvoice(op); }}>
-                          <button className={`w-6 h-6 rounded border transition-colors ${op.isInvoiceIssued ? 'bg-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-700'}`}>✔</button>
-                        </td>
-
-                        <td className="px-2 py-2 truncate text-slate-500 dark:text-slate-400">{op.remarks}</td>
                         <td className="px-2 py-2 text-center">
-                          <button onClick={(e) => { e.stopPropagation(); onDeleteOperation(op.id); }} className="text-red-400 hover:text-red-600 font-bold">삭제</button>
+                            <button onClick={() => onDeleteOperation(op.id)} className="text-red-400 hover:text-red-600 font-bold">삭제</button>
                         </td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
+                    </tr>
+                ))}
             </tbody>
           </table>
         </div>
-        
-        {/* 하단 일괄 공유 버튼 */}
-        {selectedIds.length > 0 && (
-            <div className="absolute bottom-6 right-6 z-50 animate-bounce">
-                <button 
-                    onClick={handleBulkShare} 
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-full shadow-2xl font-black flex items-center gap-2 transition-transform active:scale-95"
-                >
-                    <span className="text-lg">📤</span>
-                    <span>{selectedIds.length}개 송장 일괄 공유</span>
-                </button>
-            </div>
-        )}
       </div>
 
-      {/* Photo Viewer Modal */}
+      {/* 이미지 뷰어 (PC용) */}
       {viewingOp && (
-        <div className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6 select-none animate-in fade-in duration-200" onWheel={handleWheel}>
-          <div className="w-full max-w-6xl h-[90vh] bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-300">
-            <div className="h-16 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 shrink-0">
-              <div className="flex items-center space-x-4">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
-                <div><h3 className="text-slate-800 dark:text-white font-black text-sm">송장 이미지 미리보기</h3><p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{viewingOp.vehicleNo} | {viewingOp.date}</p></div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button onClick={handleDownload} className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black transition shadow-sm active:scale-95">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                  <span>이미지 저장</span>
-                </button>
-                <button onClick={handleSaveFromViewer} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-black transition-all active:scale-95 shadow-xl">
-                  <span>수정사항 저장</span>
-                </button>
-                <button onClick={() => setViewingOp(null)} className="p-2 text-slate-400 hover:text-red-500 transition ml-2">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 flex overflow-hidden bg-slate-100 dark:bg-slate-950/50">
-              <div className="w-72 border-r border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 p-6 space-y-6 overflow-y-auto hidden md:block">
-                <div className="space-y-4">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
-                    <label className="text-[10px] font-black text-blue-500 uppercase">수량 수정 (t)</label>
-                    <input type="number" step="0.01" value={viewingOp.quantity} onChange={(e) => handleViewerQuantityChange(Number(e.target.value))} className="w-full mt-2 bg-white dark:bg-slate-800 border-2 border-blue-200 dark:border-blue-700 rounded-xl px-4 py-2 text-lg font-black text-blue-600 outline-none" />
-                  </div>
-                  <div className="space-y-3 px-1">
-                    {[
-                      { label: '거래처', val: viewingOp.clientName, color: 'text-rose-500' },
-                      { label: '품명', val: viewingOp.item, color: 'text-slate-700 dark:text-slate-300' },
-                      { label: '공급가액', val: `₩${viewingOp.supplyPrice.toLocaleString()}`, color: 'text-slate-700 dark:text-slate-300' },
-                      { label: '합계금액', val: `₩${viewingOp.totalAmount.toLocaleString()}`, color: 'text-blue-600 dark:text-blue-400 font-black' }
-                    ].map(item => (
-                      <div key={item.label} className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
-                        <span className="text-[10px] font-bold text-slate-400">{item.label}</span>
-                        <span className={`text-xs font-bold ${item.color}`}>{item.val}</span>
-                      </div>
-                    ))}
-                  </div>
+        <div className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-6" onWheel={handleWheel}>
+            <div className="w-full max-w-6xl h-[90vh] bg-white rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+                <div className="h-16 bg-slate-50 flex items-center justify-between px-6">
+                    <h3 className="font-black text-slate-800">송장 미리보기</h3>
+                    <div className="flex gap-2">
+                        <button onClick={handleDownload} className="bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold">저장</button>
+                        <button onClick={() => setViewingOp(null)} className="text-slate-400 hover:text-red-500">✕</button>
+                    </div>
                 </div>
-              </div>
-              <div className={`flex-1 relative overflow-hidden flex items-center justify-center transition-all ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
-                <img src={viewingOp.invoicePhoto} style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${zoom}) rotate(${rotation}deg)`, transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' }} className="max-w-[90%] max-h-[90%] object-contain shadow-2xl pointer-events-none bg-white" alt="Invoice" />
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl px-5 py-3 rounded-2xl border border-white dark:border-slate-700 shadow-2xl space-x-6">
-                  <div className="flex items-center space-x-3 pr-6 border-r border-slate-200 dark:border-slate-700">
-                    <button onClick={() => setZoom(prev => Math.max(0.5, prev - 0.2))} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4"></path></svg></button>
-                    <span className="text-slate-800 dark:text-white font-black text-xs w-10 text-center">{(zoom * 100).toFixed(0)}%</span>
-                    <button onClick={() => setZoom(prev => Math.min(5, prev + 0.2))} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg></button>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <button onClick={() => setRotation(prev => prev - 90)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg></button>
-                    <button onClick={() => setRotation(prev => prev + 90)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"></path></svg></button>
-                  </div>
+                <div className="flex-1 flex justify-center items-center overflow-hidden bg-slate-100" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+                    <img src={viewingOp.invoicePhoto} style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${zoom}) rotate(${rotation}deg)` }} className="max-w-[90%] max-h-[90%] object-contain shadow-2xl" />
                 </div>
-              </div>
             </div>
-          </div>
         </div>
       )}
     </div>

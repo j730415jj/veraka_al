@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Vehicle, AdminAccount, PartnerAccount, Client } from '../types';
 
@@ -58,7 +57,7 @@ const AccountManagementView: React.FC<Props> = ({
     password: ''
   });
 
-  // 중복 아이디 체크 함수 (모든 계정 유형 통합 검색)
+  // 중복 아이디 체크
   const isIdDuplicate = (newId: string) => {
     const isVehicleDup = vehicles.some(v => v.loginCode === newId);
     const isPartnerDup = partnerAccounts.some(p => p.username === newId);
@@ -80,7 +79,6 @@ const AccountManagementView: React.FC<Props> = ({
       name: newAdminData.name || '',
       username: newAdminData.username || '',
       password: newAdminData.password || '',
-      createdAt: new Date().toISOString().split('T')[0]
     };
     onAddAdmin(newAdmin);
     setIsAdding(false);
@@ -96,19 +94,17 @@ const AccountManagementView: React.FC<Props> = ({
       alert('이미 사용 중인 접속 코드(아이디)입니다. 다른 번호를 입력해주세요.');
       return;
     }
-    // 기사 계정 추가 시 차량 마스터 정보도 자동 생성
+    
+    // 🔥 [수정됨] 에러를 유발하던 expenses, status, address, regNo 모두 제거
     const newVehicle: Vehicle = {
       id: `v-${Date.now()}`,
       vehicleNo: vehicleFormData.vehicleNo || '',
       loginCode: vehicleFormData.loginCode || '',
       password: vehicleFormData.password || '',
-      ownerName: '기사님', // 기본값
+      ownerName: '기사님', 
       phone: '',
-      regNo: '',
-      address: '',
-      status: 'idle',
-      expenses: []
     };
+    
     onAddVehicle(newVehicle);
     setIsAdding(false);
     setVehicleFormData({ vehicleNo: '', loginCode: '', password: '' });
@@ -130,7 +126,6 @@ const AccountManagementView: React.FC<Props> = ({
       username: partnerFormData.username || '',
       password: partnerFormData.password || '',
       clientName: partnerFormData.clientName || '',
-      createdAt: new Date().toISOString().split('T')[0]
     };
     onAddPartner(newPartner);
     setIsAdding(false);
@@ -238,7 +233,7 @@ const AccountManagementView: React.FC<Props> = ({
                   <label className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-wider">Client Match</label>
                   <select className="w-full border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 dark:bg-slate-800 font-bold dark:text-white" value={partnerFormData.clientName} onChange={e => setPartnerFormData({...partnerFormData, clientName: e.target.value})}>
                     <option value="">담당 거래처 선택</option>
-                    {clients.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    {clients.map(c => <option key={c.id} value={c.clientName}>{c.clientName}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
