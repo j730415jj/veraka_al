@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon, ArrowLeft, Calendar } from 'lucide-react';
 import { Operation, Client, Vehicle } from '../types';
-import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -15,6 +14,7 @@ interface Props {
 }
 
 export default function CompanyTransactionStatement({ operations, clients, vehicles, userRole, userIdentifier }: Props) {
+  // 1. 날짜 및 상태 초기화
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -24,7 +24,11 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
   const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
+  
+  // 🔥 조회 상태 (false: 검색창, true: 명세서)
+  const [isSearched, setIsSearched] = useState(false);
 
+  // 초기 거래처 선택 (협력업체 로그인 시 자동 고정)
   useEffect(() => {
     if (userRole === 'PARTNER' && userIdentifier) {
       setSelectedClientName(userIdentifier);
@@ -33,18 +37,28 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     }
   }, [clients, userRole, userIdentifier, selectedClientName]);
 
+  // --------------------------------------------------------------------------
+  // 2. 데이터 필터링
+  // --------------------------------------------------------------------------
   const filteredData = useMemo(() => {
+    if (!isSearched) return []; // 조회 전엔 데이터 없음
+
     return operations.filter(op => {
       if (!op.date) return false;
       const opDate = op.date.split('T')[0];
       const isDateMatch = opDate >= startDate && opDate <= endDate;
+      
       const isClientMatch = selectedClientName === '전체' || op.clientName === selectedClientName;
-      const opType = op.type || 'SALES';
+      
+      // 매출(SALES): 내가 청구함 / 매입(PURCHASE): 내가 지급함 (기본값 SALES)
+      const opType = op.type || 'SALES'; 
       const isTypeMatch = opType === viewType;
+
       return isDateMatch && isClientMatch && isTypeMatch;
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [operations, startDate, endDate, selectedClientName, viewType]);
+  }, [operations, startDate, endDate, selectedClientName, viewType, isSearched]);
 
+  // 합계 계산
   const totalSupply = filteredData.reduce((sum, item) => sum + (Number(item.supplyPrice) || 0), 0);
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
@@ -54,7 +68,9 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     return found ? found.ownerName : '';
   };
 
-  // 🔥 ExcelJS 적용 (상호별)
+  // --------------------------------------------------------------------------
+  // 3. 엑셀 다운로드 (ExcelJS)
+  // --------------------------------------------------------------------------
   const handleDownloadExcel = async () => {
     if (filteredData.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
     const workbook = new ExcelJS.Workbook();
@@ -163,7 +179,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
         canvas.toBlob((blob) => {
             if (blob) {
                 navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-                .then(() => { alert("📸 이미지로 복사되었습니다!"); setTimeout(() => setIsCopied(false), 2000); })
+                .then(() => { alert("📸 복사 완료!"); setTimeout(() => setIsCopied(false), 2000); })
                 .catch(() => { alert("복사 실패"); setIsCopied(false); });
             }
         });
@@ -172,19 +188,87 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
 
   const handlePrint = () => { window.print(); };
 
+  // ==========================================================================
+  // 🔥 [CASE 1] 조회 전 화면 (검색창)
+  // ==========================================================================
+  if (!isSearched) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 bg-gray-100">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 space-y-8 animate-in zoom-in-95 duration-300">
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-800">거래내역 조회</h2>
+            <p className="text-gray-500 text-sm">기간과 거래처를 선택하세요</p>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* 구분 선택 */}
+            <div className="flex bg-gray-100 p-1 rounded-xl">
+              <button onClick={() => setViewType('SALES')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'SALES' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}>매출 (청구)</button>
+              <button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'PURCHASE' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400'}`}>매입 (지급)</button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">Date Range</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                    <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="relative flex-1">
+                    <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* 관리자만 거래처 선택 가능 */}
+            {userRole !== 'PARTNER' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Client</label>
+                <select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-blue-700 outline-none">
+                  <option value="전체">전체 거래처</option>
+                  {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <button onClick={() => setIsSearched(true)} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center gap-2">
+            <span>조회하기</span>
+            <Search className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // 🔥 [CASE 2] 조회 후 화면 (명세서 100% + 하단 독바)
+  // ==========================================================================
   return (
-    <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
+    <div className="h-full flex flex-col bg-gray-100 overflow-hidden relative">
       
-      {/* 📄 왼쪽: 내역서 화면 */}
-      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
-        <div id="company-print-area" className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
+      {/* 1. 상단: 뒤로가기 */}
+      <div className="bg-white px-4 py-2 border-b flex justify-between items-center shrink-0 print:hidden">
+        <button onClick={() => setIsSearched(false)} className="flex items-center gap-1 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-100 px-3 py-1.5 rounded-lg transition-colors">
+          <ArrowLeft className="w-4 h-4" /> 다시 선택
+        </button>
+        <span className="text-xs font-bold text-slate-400">{startDate} ~ {endDate}</span>
+      </div>
+
+      {/* 2. 메인: 명세서 */}
+      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-20 print:p-0 print:overflow-visible">
+        <div id="company-print-area" className="bg-white shadow-xl p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-200 print:shadow-none print:border-none print:w-full print:max-w-none origin-top scale-[0.9] md:scale-100" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
           
           <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
             {viewType === 'SALES' ? '거 래 명 세 서 (매 출)' : '거 래 명 세 서 (매 입)'}
             <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
           </h1>
 
-          {/* 🔥 [수정됨] 헤더 레이아웃: 상호명을 왼쪽 여백의 '중앙'으로 이동 */}
           <div className="flex justify-between items-center mb-4">
             <div className="flex-1 flex flex-col justify-center items-center h-full">
               <h2 className="text-3xl font-bold tracking-tighter">{selectedClientName} 귀하</h2>
@@ -227,8 +311,8 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
                     return (
                       <tr key={row.id}>
                         <td className="border border-black py-0.5">{row.date.split('T')[0].slice(5)}</td>
-                        <td className="border border-black py-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{row.origin}</td>
-                        <td className="border border-black py-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{row.destination}</td>
+                        <td className="border border-black py-0.5 truncate">{row.origin}</td>
+                        <td className="border border-black py-0.5 truncate">{row.destination}</td>
                         <td className="border border-black py-0.5">{row.item}</td>
                         <td className="border border-black py-0.5 leading-tight">
                           <div className="font-bold">{row.vehicleNo}</div>
@@ -276,38 +360,19 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
         </div>
       </div>
 
-      <div className="w-full xl:w-72 flex-shrink-0 print:hidden">
-        <div className="bg-white rounded-lg shadow-md p-4 sticky top-4 border border-gray-200">
-          <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2"><Search className="w-4 h-4 text-blue-600" />내역서 설정</h2>
-          
-          <div className="bg-gray-100 p-2 rounded-lg mb-4">
-            <label className="text-xs font-bold text-gray-500 mb-2 block">내역 구분</label>
-            <div className="flex gap-2">
-              <button onClick={() => setViewType('SALES')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'SALES' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}>매출 (받을 돈)</button>
-              <button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-2 text-xs font-bold rounded ${viewType === 'PURCHASE' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600'}`}>매입 (줄 돈)</button>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2"><label className="text-xs font-bold text-gray-700">조회 기간</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 border rounded text-xs" /><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 border rounded text-xs" /></div>
-            
-            <div className="space-y-2">
-               <label className="text-xs font-bold text-gray-700">거래처(상호) 선택</label>
-               <select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} disabled={userRole === 'PARTNER'} className={`w-full p-2 border rounded text-base font-bold ${userRole === 'PARTNER' ? 'bg-gray-100 text-gray-500' : 'text-blue-800'}`}>
-                {userRole === 'ADMIN' && <option value="전체">전체 거래처</option>}
-                {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
-              </select>
-            </div>
-
-            <hr className="border-gray-200 my-2" />
-            <div className="space-y-2">
-              <button onClick={handleDownloadExcel} className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"><FileSpreadsheet className="w-4 h-4" />엑셀로 다운로드</button>
-              <div className="grid grid-cols-2 gap-2"><button onClick={handleCopyImage} className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>{isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}{isCopied ? '복사됨!' : '이미지 복사'}
-              </button><button onClick={handlePrint} className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"><Printer className="w-3 h-3" />인쇄</button></div>
-            </div>
-          </div>
-        </div>
+      {/* 3. 하단: 고정 메뉴바 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex gap-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] print:hidden z-50">
+        <button onClick={handleDownloadExcel} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
+            <FileSpreadsheet className="w-5 h-5" /> 엑셀 저장
+        </button>
+        <button onClick={handleCopyImage} className={`flex-1 font-bold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+            {isCopied ? <Check className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />} {isCopied ? '복사됨' : '이미지 복사'}
+        </button>
+        <button onClick={handlePrint} className="w-14 bg-gray-700 text-white rounded-xl flex items-center justify-center active:scale-95">
+            <Printer className="w-6 h-6" />
+        </button>
       </div>
+
     </div>
   );
 }

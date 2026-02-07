@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { Search, Printer, FileSpreadsheet, Copy, Check, Image as ImageIcon, ArrowLeft, Calendar } from 'lucide-react';
 import { Operation, Vehicle } from '../types';
 import html2canvas from 'html2canvas';
 import ExcelJS from 'exceljs';
@@ -23,32 +23,32 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   const [selectedVehicleNo, setSelectedVehicleNo] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
   
-  // 🔥 [추가] 조회 버튼 상태 (true일 때만 데이터 표시)
+  // 🔥 [핵심] 조회 상태 관리 (false: 검색화면, true: 명세서화면)
   const [isSearched, setIsSearched] = useState(false);
 
-  // --------------------------------------------------------------------------
-  // 2. 사용자 권한 확인 (보안)
-  // --------------------------------------------------------------------------
+  // 사용자 보안 체크
   const savedUser = localStorage.getItem('veraka_user');
   const currentUser = savedUser ? JSON.parse(savedUser) : null;
   const isVehicleUser = currentUser?.role === 'VEHICLE';
 
-  // 초기 차량 선택 로직
+  // --------------------------------------------------------------------------
+  // 2. 초기값 설정
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (isVehicleUser) {
-        // 기사님은 본인 아이디(차량번호)로 강제 고정
+        // 기사님은 본인 차량으로 고정
         setSelectedVehicleNo(currentUser.username); 
     } else if (vehicles.length > 0 && !selectedVehicleNo) {
-        // 관리자는 첫 번째 차량 자동 선택
+        // 관리자는 첫 번째 차량 선택
         setSelectedVehicleNo(vehicles[0].vehicleNo);
     }
   }, [vehicles, selectedVehicleNo, isVehicleUser, currentUser]);
 
   // --------------------------------------------------------------------------
-  // 3. 데이터 필터링 및 계산
+  // 3. 데이터 필터링 (조회 버튼 눌렀을 때만 계산)
   // --------------------------------------------------------------------------
   const filteredData = useMemo(() => {
-    // 🔥 조회 버튼을 누르지 않았으면 데이터를 빈 배열로 반환
+    // 조회를 안 했으면 데이터를 빈 상태로 둠 (메모리 절약)
     if (!isSearched) return [];
 
     return operations.filter(op => {
@@ -56,7 +56,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
       const opDate = op.date.split('T')[0];
       const isDateMatch = opDate >= startDate && opDate <= endDate;
       
-      // 기사님은 본인 차만, 관리자는 선택한 차만 조회 (보안 로직)
       const targetVehicle = isVehicleUser ? currentUser.username : selectedVehicleNo;
       const isVehicleMatch = targetVehicle === '전체' || op.vehicleNo === targetVehicle;
 
@@ -64,25 +63,20 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [operations, startDate, endDate, selectedVehicleNo, isSearched, isVehicleUser, currentUser]);
 
-  // 합계 계산
+  // 합계 계산 로직
   const totalQty = filteredData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const totalSupply = filteredData.reduce((sum, item) => sum + (Number(item.supplyPrice) || 0), 0);
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
-  // 공제액 계산 (5%)
+  // 공제액 및 실지급액 계산
   const deductionTotal = Math.floor(grandTotal * 0.05);
   const commissionSupply = Math.floor(deductionTotal / 1.1);
   const commissionTax = deductionTotal - commissionSupply;
   const finalPayment = grandTotal - deductionTotal;
 
-  // [조회하기] 버튼 클릭 핸들러
-  const handleSearch = () => {
-      setIsSearched(true);
-  };
-
   // --------------------------------------------------------------------------
-  // 4. 엑셀 다운로드 (ExcelJS - 디자인 완벽 적용)
+  // 4. 엑셀 다운로드 (ExcelJS - 기존 디자인 100% 유지)
   // --------------------------------------------------------------------------
   const handleDownloadExcel = async () => {
     if (filteredData.length === 0) {
@@ -106,7 +100,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
       { width: 18 }, // I 합계
     ];
 
-    // 제목
+    // 제목 행
     const titleRow = sheet.addRow([`차 량 거 래 명 세 서 (${parseInt(startDate.slice(5, 7))}월)`]);
     sheet.mergeCells('A1:I1');
     titleRow.height = 35;
@@ -116,7 +110,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
     sheet.addRow([]); // 빈 줄
 
-    // 상단 정보 박스 (차량번호 & 사업자정보)
+    // 상단 차량 정보 및 사업자 정보
     const targetVehicle = isVehicleUser ? currentUser.username : selectedVehicleNo;
     sheet.getCell('A3').value = `차량번호: ${targetVehicle}`;
     sheet.mergeCells('A3:E6');
@@ -124,14 +118,27 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     vehicleInfoCell.font = { size: 16, bold: true };
     vehicleInfoCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    sheet.getCell('F3').value = '등록번호'; sheet.getCell('G3').value = '406-81-64763'; sheet.mergeCells('G3:I3');
-    sheet.getCell('F4').value = '상호'; sheet.getCell('G4').value = '(주)베라카'; 
-    sheet.getCell('H4').value = '성명'; sheet.getCell('I4').value = '장국용';
-    sheet.getCell('F5').value = '주소'; sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; sheet.mergeCells('G5:I5');
-    sheet.getCell('F6').value = '업태'; sheet.getCell('G6').value = '도매및소매업'; 
-    sheet.getCell('H6').value = '종목'; sheet.getCell('I6').value = '골재';
+    sheet.getCell('F3').value = '등록번호'; 
+    sheet.getCell('G3').value = '406-81-64763'; 
+    sheet.mergeCells('G3:I3');
+    
+    sheet.getCell('F4').value = '상호'; 
+    sheet.getCell('G4').value = '(주)베라카'; 
+    
+    sheet.getCell('H4').value = '성명'; 
+    sheet.getCell('I4').value = '장국용';
+    
+    sheet.getCell('F5').value = '주소'; 
+    sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; 
+    sheet.mergeCells('G5:I5');
+    
+    sheet.getCell('F6').value = '업태'; 
+    sheet.getCell('G6').value = '도매및소매업'; 
+    
+    sheet.getCell('H6').value = '종목'; 
+    sheet.getCell('I6').value = '골재';
 
-    // 테두리 및 스타일
+    // 상단 정보 테두리 적용
     for(let r=3; r<=6; r++) {
         for(let c=6; c<=9; c++) {
             const cell = sheet.getCell(r, c);
@@ -141,9 +148,9 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         }
     }
 
-    sheet.addRow([]); // 빈 줄
+    sheet.addRow([]); 
 
-    // 중간 요약 바
+    // 중간 요약 바 (노란색 강조)
     const summaryRow = sheet.addRow(['공급가액', totalSupply.toLocaleString(), '', '세액', totalTax.toLocaleString(), '청구금액', '', '', grandTotal.toLocaleString()]);
     summaryRow.height = 30;
     
@@ -154,7 +161,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
     
-    sheet.getCell('I8').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }; // 노란색
+    sheet.getCell('I8').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
     sheet.getCell('I8').font = { size: 14, bold: true };
     sheet.mergeCells('B8:C8'); sheet.mergeCells('F8:H8');
     ['A8','B8','C8','D8','E8','F8','G8','H8','I8'].forEach(k => {
@@ -163,7 +170,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
     sheet.addRow([]); 
 
-    // 헤더
+    // 메인 표 헤더
     const headerRow = sheet.addRow(['일자', '상차지', '하차지', '품명', '단가', '수량', '공급가액', '세액', '합계금액']);
     headerRow.height = 25;
     headerRow.eachCell((cell) => {
@@ -173,7 +180,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
     });
 
-    // 데이터
+    // 데이터 루프
     filteredData.forEach(row => {
         const r = sheet.addRow([
             row.date.split('T')[0],
@@ -212,7 +219,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     sheet.mergeCells(`A${footerRow.number}:E${footerRow.number}`);
     footerRow.height = 25;
     footerRow.eachCell(cell => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }; // 노란색
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
         cell.font = { bold: true };
         cell.border = { top: {style:'medium'}, left: {style:'thin'}, bottom: {style:'medium'}, right: {style:'thin'} };
         cell.numFmt = '#,##0';
@@ -223,7 +230,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     const deductionRow = sheet.addRow(['5% 공제 (수수료+부가세)', '', '', '', '', '', commissionSupply, commissionTax, -deductionTotal]);
     sheet.mergeCells(`A${deductionRow.number}:F${deductionRow.number}`);
     deductionRow.eachCell(cell => {
-        cell.font = { color: { argb: 'FFFF0000' }, bold: true }; // 빨간색
+        cell.font = { color: { argb: 'FFFF0000' }, bold: true };
         cell.alignment = { horizontal: 'right' };
         cell.numFmt = '#,##0';
     });
@@ -242,7 +249,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     finalRow.getCell(9).numFmt = '#,##0';
     finalRow.getCell(9).alignment = { horizontal: 'right' };
 
-    // 저장
+    // 파일 저장
     const buffer = await workbook.xlsx.writeBuffer();
     const safeName = targetVehicle.replace(/[\/\\?%*:|"<>]/g, '-');
     saveAs(new Blob([buffer]), `${safeName}_차량거래내역서_${startDate}_${endDate}.xlsx`);
@@ -272,25 +279,110 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
   const handlePrint = () => { window.print(); };
 
+  // ==========================================================================
+  // 🔥 [화면 1] 조회 전: 깔끔한 검색창만 보여주기 (모바일 최적화)
+  // ==========================================================================
+  if (!isSearched) {
+    return (
+      <div className="h-full flex items-center justify-center p-6 bg-gray-100">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 space-y-8 animate-in zoom-in-95 duration-300">
+          
+          {/* 타이틀 */}
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-800">거래내역 조회</h2>
+            <p className="text-gray-500 text-sm">조회할 기간을 선택해주세요</p>
+          </div>
+
+          {/* 입력 폼 */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">시작일 (Start)</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
+                <input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)} 
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase ml-1">종료일 (End)</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
+                <input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={(e) => setEndDate(e.target.value)} 
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                />
+              </div>
+            </div>
+
+            {/* 관리자일 경우에만 차량 선택 표시 */}
+            {!isVehicleUser && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">차량 선택</label>
+                <select 
+                    value={selectedVehicleNo} 
+                    onChange={(e) => setSelectedVehicleNo(e.target.value)} 
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-blue-700 outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="전체">전체 차량</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.vehicleNo}>{v.vehicleNo} ({v.ownerName})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* 조회 버튼 */}
+          <button 
+            onClick={() => setIsSearched(true)} 
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>조회 시작</span>
+            <Search className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // 🔥 [화면 2] 조회 후: 명세서 전체화면 + 하단 메뉴바
+  // ==========================================================================
   return (
-    <div className="flex flex-col xl:flex-row gap-4 h-full bg-gray-100 p-2 overflow-hidden print:bg-white print:p-0">
+    <div className="h-full flex flex-col bg-gray-100 overflow-hidden relative">
       
-      {/* 📄 왼쪽: 내역서 화면 (조회 전에는 안내문구 표시) */}
-      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start print:overflow-visible print:bg-white print:w-full">
-        {isSearched ? (
-            <div id="vehicle-print-area" className="bg-white shadow-lg p-4 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-300 print:shadow-none print:border-none print:w-full print:max-w-none" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
+      {/* 상단바: 뒤로가기 및 날짜 정보 */}
+      <div className="bg-white px-4 py-2 border-b flex justify-between items-center shrink-0 print:hidden z-10">
+        <button 
+            onClick={() => setIsSearched(false)} 
+            className="flex items-center gap-1 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> 날짜 다시 선택
+        </button>
+        <span className="text-xs font-bold text-slate-400">{startDate} ~ {endDate}</span>
+      </div>
+
+      {/* 메인: 거래명세서 (화면 꽉 채움) */}
+      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-24 print:p-0 print:overflow-visible">
+        <div id="vehicle-print-area" className="bg-white shadow-xl p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-200 print:shadow-none print:border-none print:w-full print:max-w-none origin-top scale-[0.9] md:scale-100" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
             
-            {/* 제목 */}
             <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
                 차 량 거 래 명 세 서 <span className="text-lg ml-2 font-normal">({parseInt(startDate.slice(5,7))}월)</span>
             </h1>
 
-            {/* 🔥 [수정] 상단 정보 레이아웃: 차량번호를 중앙으로 이동 */}
+            {/* 차량번호 중앙 정렬 */}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex-1 flex justify-center items-center h-full">
-                    <h2 className="text-3xl font-bold tracking-tighter">
-                        차량번호 {isVehicleUser ? currentUser.username : selectedVehicleNo}
-                    </h2>
+                    <h2 className="text-3xl font-bold tracking-tighter">차량번호 {isVehicleUser ? currentUser.username : selectedVehicleNo}</h2>
                 </div>
                 <div className="w-[55%]">
                     <div className="text-right mb-1 text-lg font-bold">장 국 용 귀하</div>
@@ -321,7 +413,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </div>
             </div>
 
-            {/* 요약 바 */}
+            {/* 금액 요약 바 */}
             <div className="flex border-2 border-black mb-1 text-sm">
                 <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100">
                     <span>공급가액</span><span>세 액</span>
@@ -363,8 +455,8 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                             filteredData.map((row) => (
                                 <tr key={row.id}>
                                     <td className="border border-black py-0.5">{row.date.split('T')[0].slice(5)}</td>
-                                    <td className="border border-black py-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{row.origin}</td>
-                                    <td className="border border-black py-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{row.destination}</td>
+                                    <td className="border border-black py-0.5 truncate">{row.origin}</td>
+                                    <td className="border border-black py-0.5 truncate">{row.destination}</td>
                                     <td className="border border-black py-0.5">{row.item}</td>
                                     <td className="border border-black py-0.5 text-right px-1">{Number(row.unitPrice).toLocaleString()}</td>
                                     <td className="border border-black py-0.5 text-right px-1">{row.quantity}</td>
@@ -430,111 +522,38 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </table>
             </div>
             
-            {/* 하단 날인 */}
             <div className="mt-8 text-center pb-4">
                 <p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p>
-                <div className="text-xl font-bold tracking-widest inline-block">
-                    (주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span>
-                </div>
+                <div className="text-xl font-bold tracking-widest inline-block">(주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span></div>
             </div>
-
-            </div>
-        ) : (
-            // 🔥 조회 전 빈 화면
-            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                <Search className="w-16 h-16 mb-4 opacity-20" />
-                <p className="text-lg font-bold">조회 기간을 선택하고 버튼을 눌러주세요.</p>
-            </div>
-        )}
-      </div>
-
-      {/* 🛠 오른쪽: 컨트롤 패널 */}
-      <div className="w-full xl:w-72 flex-shrink-0 print:hidden">
-        <div className="bg-white rounded-lg shadow-md p-4 sticky top-4 border border-gray-200">
-          <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2">
-            <Search className="w-4 h-4 text-blue-600" />
-            내역서 설정
-          </h2>
-          <div className="space-y-4">
-            
-            {/* 🔥 날짜 인풋 크기 조절 (compact) */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-700">조회 기간</label>
-              <div className="flex gap-2">
-                  <input 
-                    type="date" 
-                    value={startDate} 
-                    onChange={(e) => setStartDate(e.target.value)} 
-                    className="w-full p-1.5 border rounded text-xs" 
-                  />
-                  <input 
-                    type="date" 
-                    value={endDate} 
-                    onChange={(e) => setEndDate(e.target.value)} 
-                    className="w-full p-1.5 border rounded text-xs" 
-                  />
-              </div>
-            </div>
-
-            {/* 🔥 차량 선택 (기사님: 숨김, 관리자: 보임) */}
-            {!isVehicleUser && (
-                <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-700">차량 선택</label>
-                    <select 
-                        value={selectedVehicleNo} 
-                        onChange={(e) => setSelectedVehicleNo(e.target.value)} 
-                        className="w-full p-2 border rounded text-base font-bold text-blue-800"
-                    >
-                        <option value="전체">전체 차량</option>
-                        {vehicles.map((v) => (
-                            <option key={v.id} value={v.vehicleNo}>
-                                {v.vehicleNo} ({v.ownerName})
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
-            {/* 🔥 조회 버튼 추가 */}
-            <button 
-                onClick={handleSearch} 
-                className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-            >
-                <Search className="w-4 h-4" />
-                조 회 하 기
-            </button>
-
-            <hr className="border-gray-200 my-2" />
-            
-            <div className="space-y-2">
-              <button 
-                onClick={handleDownloadExcel} 
-                className="w-full flex items-center justify-center gap-2 bg-green-700 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-green-800 transition-colors"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                엑셀로 다운로드
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={handleCopyImage} 
-                  className={`flex items-center justify-center gap-1 font-bold py-2 rounded text-xs border transition-colors shadow-sm ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                >
-                  {isCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                  {isCopied ? '복사됨!' : '이미지 복사'}
-                </button>
-                <button 
-                  onClick={handlePrint} 
-                  className="flex items-center justify-center gap-1 bg-gray-600 text-white font-bold py-2 rounded text-xs shadow-sm hover:bg-gray-700 transition-colors"
-                >
-                  <Printer className="w-3 h-3" />
-                  인쇄
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
+
+      {/* 3. 하단: 고정 메뉴바 (기존에 파란색 박스에 있던 기능을 여기로 이동) */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex gap-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] print:hidden z-50">
+        <button 
+            onClick={handleDownloadExcel} 
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"
+        >
+            <FileSpreadsheet className="w-5 h-5" /> 엑셀 저장
+        </button>
+        <button 
+            onClick={handleCopyImage} 
+            className={`flex-1 font-bold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}
+        >
+            {isCopied ? <Check className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />} 
+            {isCopied ? '복사됨' : '이미지 복사'}
+        </button>
+        
+        {/* 🔥 [모바일에서는 숨김 처리] PC나 태블릿(md 이상)에서만 보임 */}
+        <button 
+            onClick={handlePrint} 
+            className="w-14 bg-gray-700 text-white rounded-xl hidden md:flex items-center justify-center active:scale-95"
+        >
+            <Printer className="w-6 h-6" />
+        </button>
+      </div>
+
     </div>
   );
 }
