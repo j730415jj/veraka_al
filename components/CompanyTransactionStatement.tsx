@@ -14,7 +14,9 @@ interface Props {
 }
 
 export default function CompanyTransactionStatement({ operations, clients, vehicles, userRole, userIdentifier }: Props) {
+  // --------------------------------------------------------------------------
   // 1. 날짜 및 상태 초기화
+  // --------------------------------------------------------------------------
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -25,10 +27,12 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   const [isCopied, setIsCopied] = useState(false);
   const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
   
-  // 🔥 조회 상태 (false: 검색창, true: 명세서)
+  // 🔥 [핵심] 조회 상태 관리 (false: 검색화면, true: 명세서화면)
   const [isSearched, setIsSearched] = useState(false);
 
-  // 초기 거래처 선택 (협력업체 로그인 시 자동 고정)
+  // --------------------------------------------------------------------------
+  // 2. 초기값 설정
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (userRole === 'PARTNER' && userIdentifier) {
       setSelectedClientName(userIdentifier);
@@ -38,10 +42,11 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   }, [clients, userRole, userIdentifier, selectedClientName]);
 
   // --------------------------------------------------------------------------
-  // 2. 데이터 필터링
+  // 3. 데이터 필터링 (조회 버튼 눌렀을 때만 계산)
   // --------------------------------------------------------------------------
   const filteredData = useMemo(() => {
-    if (!isSearched) return []; // 조회 전엔 데이터 없음
+    // 조회를 안 했으면 데이터를 빈 상태로 둠
+    if (!isSearched) return [];
 
     return operations.filter(op => {
       if (!op.date) return false;
@@ -69,7 +74,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   };
 
   // --------------------------------------------------------------------------
-  // 3. 엑셀 다운로드 (ExcelJS)
+  // 4. 엑셀 다운로드 (ExcelJS - 디자인 유지)
   // --------------------------------------------------------------------------
   const handleDownloadExcel = async () => {
     if (filteredData.length === 0) { alert("다운로드할 데이터가 없습니다."); return; }
@@ -170,6 +175,9 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     saveAs(new Blob([buffer]), fileName);
   };
 
+  // --------------------------------------------------------------------------
+  // 5. 이미지 복사 기능
+  // --------------------------------------------------------------------------
   const handleCopyImage = async () => {
     const element = document.getElementById('company-print-area');
     if (!element) { alert('캡처할 영역을 찾을 수 없습니다.'); return; }
@@ -189,7 +197,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   const handlePrint = () => { window.print(); };
 
   // ==========================================================================
-  // 🔥 [CASE 1] 조회 전 화면 (검색창)
+  // 🔥 [화면 1] 조회 전: 깔끔한 검색창만 보여주기 (모바일 최적화)
   // ==========================================================================
   if (!isSearched) {
     return (
@@ -247,7 +255,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   }
 
   // ==========================================================================
-  // 🔥 [CASE 2] 조회 후 화면 (명세서 100% + 하단 독바)
+  // 🔥 [화면 2] 조회 후: 명세서 전체화면 + 하단 메뉴바
   // ==========================================================================
   return (
     <div className="h-full flex flex-col bg-gray-100 overflow-hidden relative">
@@ -368,7 +376,8 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
         <button onClick={handleCopyImage} className={`flex-1 font-bold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
             {isCopied ? <Check className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />} {isCopied ? '복사됨' : '이미지 복사'}
         </button>
-        <button onClick={handlePrint} className="w-14 bg-gray-700 text-white rounded-xl flex items-center justify-center active:scale-95">
+        {/* 🔥 모바일에서는 숨김 (md:flex) */}
+        <button onClick={handlePrint} className="w-14 bg-gray-700 text-white rounded-xl hidden md:flex items-center justify-center active:scale-95">
             <Printer className="w-6 h-6" />
         </button>
       </div>

@@ -375,6 +375,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-24 print:p-0 print:overflow-visible">
         <div id="vehicle-print-area" className="bg-white shadow-xl p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-200 print:shadow-none print:border-none print:w-full print:max-w-none origin-top scale-[0.9] md:scale-100" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
             
+            {/* 제목 */}
             <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
                 차 량 거 래 명 세 서 <span className="text-lg ml-2 font-normal">({parseInt(startDate.slice(5,7))}월)</span>
             </h1>
@@ -522,9 +523,12 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </table>
             </div>
             
+            {/* 하단 날인 */}
             <div className="mt-8 text-center pb-4">
                 <p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p>
-                <div className="text-xl font-bold tracking-widest inline-block">(주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span></div>
+                <div className="text-xl font-bold tracking-widest inline-block">
+                    (주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span>
+                </div>
             </div>
         </div>
       </div>
