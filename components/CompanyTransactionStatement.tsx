@@ -23,7 +23,9 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
 
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(lastDay);
-  const [selectedClientName, setSelectedClientName] = useState<string>('');
+  
+  // 🔥 [수정 1] 관리자는 '전체'로 시작하여 데이터 바로 표시
+  const [selectedClientName, setSelectedClientName] = useState<string>('전체');
   const [isCopied, setIsCopied] = useState(false);
   const [viewType, setViewType] = useState<'SALES' | 'PURCHASE'>('SALES');
   
@@ -36,10 +38,11 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   useEffect(() => {
     if (userRole === 'PARTNER' && userIdentifier) {
       setSelectedClientName(userIdentifier);
-    } else if (clients.length > 0 && !selectedClientName) {
-      setSelectedClientName(clients[0].clientName);
+    } else {
+      // 관리자는 '전체' 보기 (이미 useState에서 설정했지만 안전장치)
+      if (!selectedClientName) setSelectedClientName('전체');
     }
-  }, [clients, userRole, userIdentifier, selectedClientName]);
+  }, [userRole, userIdentifier]); // clients 의존성 제거 (무한 루프 방지)
 
   // --------------------------------------------------------------------------
   // 3. 데이터 필터링 (조회 버튼 눌렀을 때만 계산)
@@ -95,7 +98,8 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
 
     sheet.addRow([]);
 
-    sheet.getCell('A3').value = `${selectedClientName} 귀하`;
+    const targetName = selectedClientName === '전체' ? '전체 거래처' : selectedClientName;
+    sheet.getCell('A3').value = `${targetName} 귀하`;
     sheet.mergeCells('A3:E6');
     const clientInfo = sheet.getCell('A3');
     clientInfo.font = { size: 16, bold: true };
@@ -146,6 +150,7 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     filteredData.forEach(row => {
         const r = sheet.addRow([row.date.split('T')[0], row.origin, row.destination, row.item, row.vehicleNo, getOwnerName(row.vehicleNo), Number(row.quantity), Number(row.supplyPrice), Number(row.tax), Number(row.totalAmount)]);
         r.eachCell((cell, col) => {
+            // 🔥 여기 수정됨 (c -> cell)
             cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
             cell.alignment = [7,8,9,10].includes(col) ? { horizontal: 'right' } : { horizontal: 'center' };
             if([7,8,9,10].includes(col)) cell.numFmt = '#,##0';
@@ -155,13 +160,17 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
     const emptyRows = Math.max(0, 15 - filteredData.length);
     for(let i=0; i<emptyRows; i++) {
         const r = sheet.addRow(['', '', '', '', '', '', '', '', '', '']);
-        r.eachCell(c => c.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} });
+        r.eachCell(cell => { 
+            // 🔥 여기 수정됨 (c -> cell)
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} } 
+        });
     }
 
     const footerRow = sheet.addRow(['합 계', '', '', '', '', '', '', totalSupply, totalTax, grandTotal]);
     sheet.mergeCells(`A${footerRow.number}:G${footerRow.number}`);
     footerRow.height = 25;
     footerRow.eachCell(cell => {
+        // 🔥 여기 수정됨 (c -> cell)
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
         cell.font = { bold: true };
         cell.border = { top: {style:'medium'}, left: {style:'thin'}, bottom: {style:'medium'}, right: {style:'thin'} };
@@ -197,191 +206,87 @@ export default function CompanyTransactionStatement({ operations, clients, vehic
   const handlePrint = () => { window.print(); };
 
   // ==========================================================================
-  // 🔥 [화면 1] 조회 전: 깔끔한 검색창만 보여주기 (모바일 최적화)
+  // [화면 1] 조회 전 (검색창)
   // ==========================================================================
   if (!isSearched) {
     return (
       <div className="h-full flex items-center justify-center p-6 bg-gray-100">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 space-y-8 animate-in zoom-in-95 duration-300">
           <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-8 h-8" />
-            </div>
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><Search className="w-8 h-8" /></div>
             <h2 className="text-2xl font-black text-gray-800">거래내역 조회</h2>
             <p className="text-gray-500 text-sm">기간과 거래처를 선택하세요</p>
           </div>
-
           <div className="space-y-4">
-            
-            {/* 구분 선택 */}
-            <div className="flex bg-gray-100 p-1 rounded-xl">
-              <button onClick={() => setViewType('SALES')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'SALES' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}>매출 (청구)</button>
-              <button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'PURCHASE' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400'}`}>매입 (지급)</button>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase ml-1">Date Range</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                    <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="relative flex-1">
-                    <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-            </div>
-
-            {/* 관리자만 거래처 선택 가능 */}
-            {userRole !== 'PARTNER' && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Client</label>
-                <select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-blue-700 outline-none">
-                  <option value="전체">전체 거래처</option>
-                  {clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}
-                </select>
-              </div>
+            <div className="flex bg-gray-100 p-1 rounded-xl"><button onClick={() => setViewType('SALES')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'SALES' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}>매출 (청구)</button><button onClick={() => setViewType('PURCHASE')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${viewType === 'PURCHASE' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400'}`}>매입 (지급)</button></div>
+            <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Date Range</label><div className="flex gap-2"><div className="relative flex-1"><Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" /><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" /></div><div className="relative flex-1"><Calendar className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" /><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full pl-9 pr-2 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500" /></div></div></div>
+            {!userRole?.includes('PARTNER') && (
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase ml-1">Client</label><select value={selectedClientName} onChange={(e) => setSelectedClientName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-blue-700 outline-none"><option value="전체">전체 거래처</option>{clients.map((c) => (<option key={c.id} value={c.clientName}>{c.clientName}</option>))}</select></div>
             )}
           </div>
-
-          <button onClick={() => setIsSearched(true)} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center gap-2">
-            <span>조회하기</span>
-            <Search className="w-5 h-5" />
-          </button>
+          <button onClick={() => setIsSearched(true)} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"><span>조회하기</span><Search className="w-5 h-5" /></button>
         </div>
       </div>
     );
   }
 
   // ==========================================================================
-  // 🔥 [화면 2] 조회 후: 명세서 전체화면 + 하단 메뉴바
+  // [화면 2] 조회 후 (명세서)
   // ==========================================================================
   return (
     <div className="h-full flex flex-col bg-gray-100 overflow-hidden relative">
-      
-      {/* 1. 상단: 뒤로가기 */}
-      <div className="bg-white px-4 py-2 border-b flex justify-between items-center shrink-0 print:hidden">
-        <button onClick={() => setIsSearched(false)} className="flex items-center gap-1 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-100 px-3 py-1.5 rounded-lg transition-colors">
-          <ArrowLeft className="w-4 h-4" /> 다시 선택
-        </button>
+      <div className="bg-white px-4 py-2 border-b flex justify-between items-center shrink-0 print:hidden z-10">
+        <button onClick={() => setIsSearched(false)} className="flex items-center gap-1 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"><ArrowLeft className="w-4 h-4" /> 날짜 다시 선택</button>
         <span className="text-xs font-bold text-slate-400">{startDate} ~ {endDate}</span>
       </div>
 
-      {/* 2. 메인: 명세서 */}
-      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-20 print:p-0 print:overflow-visible">
+      <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-24 print:p-0 print:overflow-visible">
         <div id="company-print-area" className="bg-white shadow-xl p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-200 print:shadow-none print:border-none print:w-full print:max-w-none origin-top scale-[0.9] md:scale-100" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
-          
-          <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
-            {viewType === 'SALES' ? '거 래 명 세 서 (매 출)' : '거 래 명 세 서 (매 입)'}
-            <span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span>
-          </h1>
-
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex-1 flex flex-col justify-center items-center h-full">
-              <h2 className="text-3xl font-bold tracking-tighter">{selectedClientName} 귀하</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {viewType === 'SALES' ? '※ 귀하가 운송 의뢰한 내역 (청구)' : '※ 귀하가 당사에 운송 제공한 내역 (지급)'}
-              </p>
+            <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">{viewType === 'SALES' ? '거 래 명 세 서 (매 출)' : '거 래 명 세 서 (매 입)'}<span className="text-lg ml-2 font-normal text-black">({parseInt(startDate.slice(5,7))}월)</span></h1>
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex-1 flex flex-col justify-center items-center h-full"><h2 className="text-3xl font-bold tracking-tighter">{selectedClientName === '전체' ? '전체 거래처' : selectedClientName} 귀하</h2><p className="text-sm text-gray-500 mt-1">{viewType === 'SALES' ? '※ 귀하가 운송 의뢰한 내역 (청구)' : '※ 귀하가 당사에 운송 제공한 내역 (지급)'}</p></div>
+                <div className="w-[55%]"><div className="text-right mb-1 text-lg font-bold">장 국 용 귀하</div><table className="w-full border-collapse border-2 border-black text-xs"><tbody><tr><td className="border border-black bg-gray-100 text-center p-1 w-16 print:bg-gray-100">등록번호</td><td className="border border-black p-1 text-center font-bold" colSpan={3}>406-81-64763</td></tr><tr><td className="border border-black bg-gray-100 text-center p-1 print:bg-gray-100">상 호</td><td className="border border-black p-1 text-center">(주)베라카</td><td className="border border-black bg-gray-100 text-center p-1 w-12 print:bg-gray-100">성 명</td><td className="border border-black p-1 text-center">장국용</td></tr><tr><td className="border border-black bg-gray-100 text-center p-1 print:bg-gray-100">주 소</td><td className="border border-black p-1 text-center" colSpan={3}>포항시 남구 연일읍 새천년대로 202. 2층</td></tr></tbody></table></div>
             </div>
-            <div className="w-[55%]">
-               <div className="text-right mb-1 text-lg font-bold">장 국 용 귀하</div>
-               <table className="w-full border-collapse border-2 border-black text-xs">
-                <tbody>
-                  <tr><td className="border border-black bg-gray-100 text-center p-1 w-16 print:bg-gray-100">등록번호</td><td className="border border-black p-1 text-center font-bold" colSpan={3}>406-81-64763</td></tr>
-                  <tr><td className="border border-black bg-gray-100 text-center p-1 print:bg-gray-100">상 호</td><td className="border border-black p-1 text-center">(주)베라카</td><td className="border border-black bg-gray-100 text-center p-1 w-12 print:bg-gray-100">성 명</td><td className="border border-black p-1 text-center">장국용</td></tr>
-                  <tr><td className="border border-black bg-gray-100 text-center p-1 print:bg-gray-100">주 소</td><td className="border border-black p-1 text-center" colSpan={3}>포항시 남구 연일읍 새천년대로 202. 2층</td></tr>
-                </tbody>
-              </table>
+            <div className="flex border-2 border-black mb-1 text-sm"><div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100"><span>공급가액</span><span>세 액</span></div><div className="w-1/4 border-r border-black p-1 text-right flex flex-col justify-center px-2 font-bold"><span>{totalSupply.toLocaleString()}</span><span>{totalTax.toLocaleString()}</span></div><div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">{viewType === 'SALES' ? '청구 금액' : '지급 금액'}</div><div className="w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold bg-gray-50 print:bg-transparent">{grandTotal.toLocaleString()}</div></div>
+            <div className="w-full mb-1">
+                <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
+                    <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
+                    <thead className="bg-gray-100 font-bold print:bg-gray-100"><tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">상차지</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr></thead>
+                    <tbody>
+                        {filteredData.length > 0 ? (filteredData.map((row) => {
+                            const owner = getOwnerName(row.vehicleNo);
+                            return (
+                              <tr key={row.id}>
+                                <td className="border border-black py-0.5">{row.date.split('T')[0].slice(5)}</td>
+                                <td className="border border-black py-0.5 truncate">{row.origin}</td>
+                                <td className="border border-black py-0.5 truncate">{row.destination}</td>
+                                <td className="border border-black py-0.5">{row.item}</td>
+                                <td className="border border-black py-0.5 leading-tight"><div className="font-bold">{row.vehicleNo}</div>{owner && <div className="text-[10px] text-gray-500 scale-90">({owner})</div>}</td>
+                                <td className="border border-black py-0.5 text-right px-1">{row.quantity}</td>
+                                <td className="border border-black py-0.5 text-right px-1">{Number(row.supplyPrice).toLocaleString()}</td>
+                                <td className="border border-black py-0.5 text-right px-1">{Number(row.tax).toLocaleString()}</td>
+                                <td className="border border-black py-0.5 text-right px-1 font-bold">{Number(row.totalAmount).toLocaleString()}</td>
+                              </tr>
+                            );
+                          })) : (<tr><td colSpan={9} className="border border-black py-10 text-center text-gray-500">기간 내 거래 내역이 없습니다.</td></tr>)}
+                        {Array.from({ length: Math.max(0, 15 - filteredData.length) }).map((_, i) => (<tr key={`empty-${i}`}><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td></tr>))}
+                    </tbody>
+                    <tfoot className="font-bold border-t-2 border-black"><tr className="bg-gray-100 print:bg-transparent"><td className="border border-black py-1" colSpan={6}>합 계</td><td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td><td className="border border-black py-1 text-right px-1">{totalTax.toLocaleString()}</td><td className="border border-black py-1 text-right px-1 text-base text-black">{grandTotal.toLocaleString()}</td></tr></tfoot>
+                </table>
             </div>
-          </div>
-
-          <div className="flex border-2 border-black mb-1 text-sm">
-            <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100"><span>공급가액</span><span>세 액</span></div>
-            <div className="w-1/4 border-r border-black p-1 text-right flex flex-col justify-center px-2 font-bold"><span>{totalSupply.toLocaleString()}</span><span>{totalTax.toLocaleString()}</span></div>
-            <div className="w-1/4 border-r border-black bg-gray-100 p-1 font-bold text-center flex items-center justify-center text-lg print:bg-gray-100">
-              {viewType === 'SALES' ? '청구 금액' : '지급 금액'}
+            <div className="flex justify-end mt-4">
+                <table className="w-[300px] border-collapse border border-black text-sm print:bg-transparent"><tbody><tr className="border-t-2 border-black"><td className="border border-black p-2 text-center font-extrabold bg-gray-100 print:bg-gray-100">{viewType === 'SALES' ? '청 구 금 액' : '지 급 금 액'}</td><td className="border border-black p-2 text-right px-2 text-lg font-extrabold text-black">{grandTotal.toLocaleString()}</td></tr></tbody></table>
             </div>
-            <div className="w-1/4 p-1 text-right flex items-center justify-end px-2 text-xl font-extrabold bg-gray-50 print:bg-transparent">
-              {grandTotal.toLocaleString()}
-            </div>
-          </div>
-
-          <div className="w-full mb-1">
-            <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
-              <colgroup><col className="w-20"/><col className="w-24"/><col className="w-24"/><col className="w-16"/><col className="w-16"/><col className="w-12"/><col className="w-20"/><col className="w-16"/><col className="w-20"/></colgroup>
-              <thead className="bg-gray-100 font-bold print:bg-gray-100">
-                <tr><th className="border border-black py-1">일자</th><th className="border border-black py-1">상차지</th><th className="border border-black py-1">하차지</th><th className="border border-black py-1">품명</th><th className="border border-black py-1">차량</th><th className="border border-black py-1">수량</th><th className="border border-black py-1">공급가액</th><th className="border border-black py-1">세액</th><th className="border border-black py-1">합계금액</th></tr>
-              </thead>
-              <tbody>
-                {filteredData.length > 0 ? (filteredData.map((row) => {
-                    const owner = getOwnerName(row.vehicleNo);
-                    return (
-                      <tr key={row.id}>
-                        <td className="border border-black py-0.5">{row.date.split('T')[0].slice(5)}</td>
-                        <td className="border border-black py-0.5 truncate">{row.origin}</td>
-                        <td className="border border-black py-0.5 truncate">{row.destination}</td>
-                        <td className="border border-black py-0.5">{row.item}</td>
-                        <td className="border border-black py-0.5 leading-tight">
-                          <div className="font-bold">{row.vehicleNo}</div>
-                          {owner && <div className="text-[10px] text-gray-500 scale-90">({owner})</div>}
-                        </td>
-                        <td className="border border-black py-0.5 text-right px-1">{row.quantity}</td>
-                        <td className="border border-black py-0.5 text-right px-1">{Number(row.supplyPrice).toLocaleString()}</td>
-                        <td className="border border-black py-0.5 text-right px-1">{Number(row.tax).toLocaleString()}</td>
-                        <td className="border border-black py-0.5 text-right px-1 font-bold">{Number(row.totalAmount).toLocaleString()}</td>
-                      </tr>
-                    );
-                  })) : (<tr><td colSpan={9} className="border border-black py-10 text-center text-gray-500">기간 내 거래 내역이 없습니다.</td></tr>)}
-                {Array.from({ length: Math.max(0, 15 - filteredData.length) }).map((_, i) => (
-                  <tr key={`empty-${i}`}><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td></tr>
-                ))}
-              </tbody>
-              <tfoot className="font-bold border-t-2 border-black">
-                <tr className="bg-gray-100 print:bg-transparent">
-                  <td className="border border-black py-1" colSpan={6}>합 계</td>
-                  <td className="border border-black py-1 text-right px-1">{totalSupply.toLocaleString()}</td>
-                  <td className="border border-black py-1 text-right px-1">{totalTax.toLocaleString()}</td>
-                  <td className="border border-black py-1 text-right px-1 text-base text-black">{grandTotal.toLocaleString()}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="flex justify-end mt-4">
-             <table className="w-[300px] border-collapse border border-black text-sm print:bg-transparent">
-              <tbody><tr className="border-t-2 border-black">
-                <td className="border border-black p-2 text-center font-extrabold bg-gray-100 print:bg-gray-100">
-                  {viewType === 'SALES' ? '청 구 금 액' : '지 급 금 액'}
-                </td>
-                <td className="border border-black p-2 text-right px-2 text-lg font-extrabold text-black">
-                  {grandTotal.toLocaleString()}
-                </td>
-              </tr></tbody>
-            </table>
-          </div>
-
-           <div className="mt-8 text-center pb-4">
-            <p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p>
-            <div className="text-xl font-bold tracking-widest inline-block">(주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span></div>
-          </div>
+            <div className="mt-8 text-center pb-4"><p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p><div className="text-xl font-bold tracking-widest inline-block">(주) 베 라 카 <span className="text-gray-300 text-sm font-normal ml-2">(인)</span></div></div>
         </div>
       </div>
 
-      {/* 3. 하단: 고정 메뉴바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex gap-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] print:hidden z-50">
-        <button onClick={handleDownloadExcel} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
-            <FileSpreadsheet className="w-5 h-5" /> 엑셀 저장
-        </button>
-        <button onClick={handleCopyImage} className={`flex-1 font-bold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
-            {isCopied ? <Check className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />} {isCopied ? '복사됨' : '이미지 복사'}
-        </button>
-        {/* 🔥 모바일에서는 숨김 (md:flex) */}
-        <button onClick={handlePrint} className="w-14 bg-gray-700 text-white rounded-xl hidden md:flex items-center justify-center active:scale-95">
-            <Printer className="w-6 h-6" />
-        </button>
+        <button onClick={handleDownloadExcel} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"><FileSpreadsheet className="w-5 h-5" /> 엑셀 저장</button>
+        <button onClick={handleCopyImage} className={`flex-1 font-bold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform ${isCopied ? 'bg-blue-800 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>{isCopied ? <Check className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />} {isCopied ? '복사됨' : '이미지 복사'}</button>
+        {/* 모바일 숨김, PC 보임 */}
+        <button onClick={handlePrint} className="w-14 bg-gray-700 text-white rounded-xl hidden md:flex items-center justify-center active:scale-95"><Printer className="w-6 h-6" /></button>
       </div>
-
     </div>
   );
 }

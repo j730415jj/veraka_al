@@ -20,10 +20,12 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
   const [startDate, setStartDate] = useState(firstDay);
   const [endDate, setEndDate] = useState(lastDay);
-  const [selectedVehicleNo, setSelectedVehicleNo] = useState<string>('');
+  
+  // 🔥 [수정] 관리자는 처음에 '전체'로 시작 (데이터 바로 보임)
+  const [selectedVehicleNo, setSelectedVehicleNo] = useState<string>('전체');
   const [isCopied, setIsCopied] = useState(false);
   
-  // 🔥 [핵심] 조회 상태 관리 (false: 검색화면, true: 명세서화면)
+  // 🔥 조회 상태 관리 (false: 검색화면, true: 명세서화면)
   const [isSearched, setIsSearched] = useState(false);
 
   // 사용자 보안 체크
@@ -38,17 +40,17 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     if (isVehicleUser) {
         // 기사님은 본인 차량으로 고정
         setSelectedVehicleNo(currentUser.username); 
-    } else if (vehicles.length > 0 && !selectedVehicleNo) {
-        // 관리자는 첫 번째 차량 선택
-        setSelectedVehicleNo(vehicles[0].vehicleNo);
+    } else {
+        // 관리자는 '전체'가 기본값
+        if (!selectedVehicleNo) setSelectedVehicleNo('전체');
     }
-  }, [vehicles, selectedVehicleNo, isVehicleUser, currentUser]);
+  }, [isVehicleUser, currentUser]);
 
   // --------------------------------------------------------------------------
-  // 3. 데이터 필터링 (조회 버튼 눌렀을 때만 계산)
+  // 3. 데이터 필터링
   // --------------------------------------------------------------------------
   const filteredData = useMemo(() => {
-    // 조회를 안 했으면 데이터를 빈 상태로 둠 (메모리 절약)
+    // 조회 전에는 빈 배열
     if (!isSearched) return [];
 
     return operations.filter(op => {
@@ -63,20 +65,20 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [operations, startDate, endDate, selectedVehicleNo, isSearched, isVehicleUser, currentUser]);
 
-  // 합계 계산 로직
+  // 합계 계산
   const totalQty = filteredData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const totalSupply = filteredData.reduce((sum, item) => sum + (Number(item.supplyPrice) || 0), 0);
   const totalTax = filteredData.reduce((sum, item) => sum + (Number(item.tax) || 0), 0);
   const grandTotal = filteredData.reduce((sum, item) => sum + (Number(item.totalAmount) || 0), 0);
 
-  // 공제액 및 실지급액 계산
+  // 공제액 계산
   const deductionTotal = Math.floor(grandTotal * 0.05);
   const commissionSupply = Math.floor(deductionTotal / 1.1);
   const commissionTax = deductionTotal - commissionSupply;
   const finalPayment = grandTotal - deductionTotal;
 
   // --------------------------------------------------------------------------
-  // 4. 엑셀 다운로드 (ExcelJS - 기존 디자인 100% 유지)
+  // 4. 엑셀 다운로드
   // --------------------------------------------------------------------------
   const handleDownloadExcel = async () => {
     if (filteredData.length === 0) {
@@ -87,20 +89,11 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('차량거래내역');
 
-    // 컬럼 너비 설정
     sheet.columns = [
-      { width: 15 }, // A 일자
-      { width: 15 }, // B 상차지
-      { width: 15 }, // C 하차지
-      { width: 12 }, // D 품명
-      { width: 12 }, // E 단가
-      { width: 8 },  // F 수량
-      { width: 15 }, // G 공급가
-      { width: 12 }, // H 세액
-      { width: 18 }, // I 합계
+      { width: 15 }, { width: 15 }, { width: 15 }, { width: 12 }, { width: 12 }, 
+      { width: 8 }, { width: 15 }, { width: 12 }, { width: 18 }
     ];
 
-    // 제목 행
     const titleRow = sheet.addRow([`차 량 거 래 명 세 서 (${parseInt(startDate.slice(5, 7))}월)`]);
     sheet.mergeCells('A1:I1');
     titleRow.height = 35;
@@ -108,37 +101,21 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     titleRow.alignment = { vertical: 'middle', horizontal: 'center' };
     titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
 
-    sheet.addRow([]); // 빈 줄
+    sheet.addRow([]);
 
-    // 상단 차량 정보 및 사업자 정보
-    const targetVehicle = isVehicleUser ? currentUser.username : selectedVehicleNo;
+    const targetVehicle = selectedVehicleNo === '전체' ? '전체 차량' : selectedVehicleNo;
     sheet.getCell('A3').value = `차량번호: ${targetVehicle}`;
     sheet.mergeCells('A3:E6');
     const vehicleInfoCell = sheet.getCell('A3');
     vehicleInfoCell.font = { size: 16, bold: true };
     vehicleInfoCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    sheet.getCell('F3').value = '등록번호'; 
-    sheet.getCell('G3').value = '406-81-64763'; 
-    sheet.mergeCells('G3:I3');
-    
-    sheet.getCell('F4').value = '상호'; 
-    sheet.getCell('G4').value = '(주)베라카'; 
-    
-    sheet.getCell('H4').value = '성명'; 
-    sheet.getCell('I4').value = '장국용';
-    
-    sheet.getCell('F5').value = '주소'; 
-    sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; 
-    sheet.mergeCells('G5:I5');
-    
-    sheet.getCell('F6').value = '업태'; 
-    sheet.getCell('G6').value = '도매및소매업'; 
-    
-    sheet.getCell('H6').value = '종목'; 
-    sheet.getCell('I6').value = '골재';
+    sheet.getCell('F3').value = '등록번호'; sheet.getCell('G3').value = '406-81-64763'; sheet.mergeCells('G3:I3');
+    sheet.getCell('F4').value = '상호'; sheet.getCell('G4').value = '(주)베라카'; 
+    sheet.getCell('H4').value = '성명'; sheet.getCell('I4').value = '장국용';
+    sheet.getCell('F5').value = '주소'; sheet.getCell('G5').value = '포항시 남구 연일읍 새천년대로 202. 2층'; sheet.mergeCells('G5:I5');
+    sheet.getCell('F6').value = '업태'; sheet.getCell('G6').value = '도매및소매업'; sheet.getCell('H6').value = '종목'; sheet.getCell('I6').value = '골재';
 
-    // 상단 정보 테두리 적용
     for(let r=3; r<=6; r++) {
         for(let c=6; c<=9; c++) {
             const cell = sheet.getCell(r, c);
@@ -150,7 +127,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
     sheet.addRow([]); 
 
-    // 중간 요약 바 (노란색 강조)
     const summaryRow = sheet.addRow(['공급가액', totalSupply.toLocaleString(), '', '세액', totalTax.toLocaleString(), '청구금액', '', '', grandTotal.toLocaleString()]);
     summaryRow.height = 30;
     
@@ -170,7 +146,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
 
     sheet.addRow([]); 
 
-    // 메인 표 헤더
     const headerRow = sheet.addRow(['일자', '상차지', '하차지', '품명', '단가', '수량', '공급가액', '세액', '합계금액']);
     headerRow.height = 25;
     headerRow.eachCell((cell) => {
@@ -180,7 +155,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
     });
 
-    // 데이터 루프
     filteredData.forEach(row => {
         const r = sheet.addRow([
             row.date.split('T')[0],
@@ -205,7 +179,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         });
     });
 
-    // 빈 줄 채우기
     const emptyRows = Math.max(0, 15 - filteredData.length);
     for(let i=0; i<emptyRows; i++) {
         const r = sheet.addRow(['', '', '', '', '', '', '', '', '']);
@@ -214,7 +187,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         });
     }
 
-    // 하단 합계
     const footerRow = sheet.addRow(['매출 합계', '', '', '', '', totalQty, totalSupply, totalTax, grandTotal]);
     sheet.mergeCells(`A${footerRow.number}:E${footerRow.number}`);
     footerRow.height = 25;
@@ -226,7 +198,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     });
     footerRow.getCell(1).alignment = { horizontal: 'center' };
 
-    // 공제액
     const deductionRow = sheet.addRow(['5% 공제 (수수료+부가세)', '', '', '', '', '', commissionSupply, commissionTax, -deductionTotal]);
     sheet.mergeCells(`A${deductionRow.number}:F${deductionRow.number}`);
     deductionRow.eachCell(cell => {
@@ -236,7 +207,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
     });
     deductionRow.getCell(1).alignment = { horizontal: 'center' };
 
-    // 실지급액
     sheet.addRow([]);
     const finalRow = sheet.addRow(['', '', '', '', '', '실 지급액', '', '', finalPayment]);
     sheet.mergeCells(`F${finalRow.number}:H${finalRow.number}`);
@@ -280,14 +250,13 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   const handlePrint = () => { window.print(); };
 
   // ==========================================================================
-  // 🔥 [화면 1] 조회 전: 깔끔한 검색창만 보여주기 (모바일 최적화)
+  // [화면 1] 조회 전 (검색창)
   // ==========================================================================
   if (!isSearched) {
     return (
       <div className="h-full flex items-center justify-center p-6 bg-gray-100">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 space-y-8 animate-in zoom-in-95 duration-300">
           
-          {/* 타이틀 */}
           <div className="text-center space-y-2">
             <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-8 h-8" />
@@ -296,7 +265,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
             <p className="text-gray-500 text-sm">조회할 기간을 선택해주세요</p>
           </div>
 
-          {/* 입력 폼 */}
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase ml-1">시작일 (Start)</label>
@@ -341,7 +309,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
             )}
           </div>
 
-          {/* 조회 버튼 */}
           <button 
             onClick={() => setIsSearched(true)} 
             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
@@ -355,7 +322,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   }
 
   // ==========================================================================
-  // 🔥 [화면 2] 조회 후: 명세서 전체화면 + 하단 메뉴바
+  // [화면 2] 조회 후 (명세서)
   // ==========================================================================
   return (
     <div className="h-full flex flex-col bg-gray-100 overflow-hidden relative">
@@ -375,15 +342,13 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
       <div className="flex-1 overflow-auto bg-gray-50 flex justify-center items-start pt-4 pb-24 print:p-0 print:overflow-visible">
         <div id="vehicle-print-area" className="bg-white shadow-xl p-6 w-full max-w-[210mm] min-h-[297mm] text-black border border-gray-200 print:shadow-none print:border-none print:w-full print:max-w-none origin-top scale-[0.9] md:scale-100" style={{ fontFamily: '"Malgun Gothic", "Dotum", sans-serif' }}>
             
-            {/* 제목 */}
             <h1 className="text-3xl font-extrabold text-center mb-6 tracking-widest bg-gray-100 py-2 border-b-2 border-black print:bg-transparent text-black">
                 차 량 거 래 명 세 서 <span className="text-lg ml-2 font-normal">({parseInt(startDate.slice(5,7))}월)</span>
             </h1>
 
-            {/* 차량번호 중앙 정렬 */}
             <div className="flex justify-between items-center mb-4">
                 <div className="flex-1 flex justify-center items-center h-full">
-                    <h2 className="text-3xl font-bold tracking-tighter">차량번호 {isVehicleUser ? currentUser.username : selectedVehicleNo}</h2>
+                    <h2 className="text-3xl font-bold tracking-tighter">차량번호 {selectedVehicleNo === '전체' ? '전체 차량' : selectedVehicleNo}</h2>
                 </div>
                 <div className="w-[55%]">
                     <div className="text-right mb-1 text-lg font-bold">장 국 용 귀하</div>
@@ -414,7 +379,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </div>
             </div>
 
-            {/* 금액 요약 바 */}
             <div className="flex border-2 border-black mb-1 text-sm">
                 <div className="w-1/4 border-r border-black bg-gray-50 p-1 font-bold text-center flex flex-col justify-center print:bg-gray-100">
                     <span>공급가액</span><span>세 액</span>
@@ -431,7 +395,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </div>
             </div>
 
-            {/* 메인 테이블 */}
             <div className="w-full mb-1">
                 <table className="w-full border-collapse border border-black text-xs text-center table-fixed">
                     <colgroup>
@@ -469,7 +432,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                         ) : (
                             <tr><td colSpan={9} className="border border-black py-10 text-center text-gray-500">기간 내 거래 내역이 없습니다.</td></tr>
                         )}
-                        {/* 빈 행 채우기 (모양 유지) */}
                         {Array.from({ length: Math.max(0, 15 - filteredData.length) }).map((_, i) => (
                             <tr key={`empty-${i}`}>
                                 <td className="border border-black py-2">&nbsp;</td><td className="border border-black py-2">&nbsp;</td>
@@ -497,7 +459,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </table>
             </div>
 
-            {/* 하단 결제 박스 */}
             <div className="flex justify-end mt-4">
                 <table className="w-[300px] border-collapse border border-black text-sm bg-gray-50 print:bg-transparent">
                     <tbody>
@@ -523,7 +484,6 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
                 </table>
             </div>
             
-            {/* 하단 날인 */}
             <div className="mt-8 text-center pb-4">
                 <p className="text-sm text-gray-500 mb-6">위와 같이 거래하였음을 확인합니다.</p>
                 <div className="text-xl font-bold tracking-widest inline-block">
@@ -533,7 +493,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
         </div>
       </div>
 
-      {/* 3. 하단: 고정 메뉴바 (기존에 파란색 박스에 있던 기능을 여기로 이동) */}
+      {/* 3. 하단: 고정 메뉴바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex gap-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] print:hidden z-50">
         <button 
             onClick={handleDownloadExcel} 
