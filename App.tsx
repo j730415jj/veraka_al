@@ -10,7 +10,6 @@ import MasterClientView from './components/MasterClientView';
 import MasterVehicleView from './components/MasterVehicleView';
 import MasterUnitPriceView from './components/MasterUnitPriceView';
 import MasterSnippetView from './components/MasterSnippetView';
-//  VehicleTrackingView import removed (위치관제 삭제)
 import DispatchManagementView from './components/DispatchManagementView';
 import AccountManagementView from './components/AccountManagementView';
 import DashboardView from './components/DashboardView';
@@ -40,16 +39,13 @@ const App: React.FC = () => {
   const wakeLockRef = useRef<any>(null); 
 
   useEffect(() => {
-    // 1. 소리 파일 준비
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
 
-    // 2. 알림 권한 요청
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
     
-    // 3. 사용자 인터랙션 시 소리/화면켜짐 활성화
     const unlockAudioAndScreen = async () => {
       if(audioRef.current) {
         audioRef.current.volume = 1.0; 
@@ -96,8 +92,6 @@ const App: React.FC = () => {
     }
     fetchData();
   }, []);
-
-  // 과부하 방지: 10초 자동 새로고침 삭제됨 (주석처리 했던 부분 삭제)
 
   // 실시간 감지
   useEffect(() => {
@@ -178,29 +172,17 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  const handleLogin = (id: string, pw?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
-    let loggedInUser: AuthUser | null = null;
+  // 🔥 [수정됨] LoginView와 호환되도록 수정 (AuthUser 객체를 바로 받음)
+  const handleLogin = (loggedInUser: AuthUser) => {
+    setUser(loggedInUser);
+    
+    // 역할에 따라 첫 화면 분기
     let nextView = ViewType.DASHBOARD;
-    const cleanId = id.trim();
-    const cleanPw = pw ? pw.trim() : '';
-
-    if (type === 'ADMIN') {
-      const admin = adminAccounts.find(a => a.username === cleanId && a.password === cleanPw);
-      if (admin) { loggedInUser = { id: admin.id, role: 'ADMIN', name: admin.name, identifier: admin.username }; nextView = ViewType.DASHBOARD; }
-    } else if (type === 'PARTNER') {
-      const partner = partnerAccounts.find(p => p.username === cleanId && p.password === cleanPw);
-      if (partner) { loggedInUser = { id: partner.id, role: 'PARTNER', name: partner.name, identifier: partner.clientName }; nextView = ViewType.OPERATION_ENTRY; }
-    } else {
-      const vehicle = vehicles.find(v => (v.vehicleNo === cleanId || v.loginCode === cleanId) && v.password === cleanPw);
-      if (vehicle) { loggedInUser = { id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo }; nextView = ViewType.DISPATCH_MGMT; }
-    }
-    if (loggedInUser) {
-      setUser(loggedInUser);
-      setCurrentView(nextView);
-      localStorage.setItem('veraka_user', JSON.stringify(loggedInUser));
-      return true;
-    }
-    return false;
+    if (loggedInUser.role === 'VEHICLE') nextView = ViewType.DISPATCH_MGMT;
+    else if (loggedInUser.role === 'PARTNER') nextView = ViewType.OPERATION_ENTRY;
+    
+    setCurrentView(nextView);
+    localStorage.setItem('veraka_user', JSON.stringify(loggedInUser));
   };
 
   const handleLogout = () => { setUser(null); localStorage.removeItem('veraka_user'); };
@@ -218,7 +200,10 @@ const App: React.FC = () => {
   const handleUpdateDispatchStatus = async (id: string, status: 'pending'|'sent'|'completed', photo?: string, manualQuantity?: number) => { setDispatches(prev => prev.map(d => d.id === id ? { ...d, status } : d)); await supabase.from('dispatches').update({ status }).eq('id', id); fetchData(); };
 
   const renderView = () => {
+    // 🔥 [수정됨] handleLogin 함수 연결
     if (!user) return <LoginView onLogin={handleLogin} />;
+    
+    // 기존 로직 유지
     const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) : user.role === 'VEHICLE' ? operations.filter(op => op.vehicleNo === user.identifier) : operations;
 
     switch (currentView) {
@@ -228,7 +213,6 @@ const App: React.FC = () => {
             user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
-                // 🔥 수동 입력 허용 (유효성 검사는 하위 컴포넌트에서 이미 함)
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
                 fetchData(); 
@@ -253,14 +237,13 @@ const App: React.FC = () => {
       case ViewType.COMPANY_REPORT: return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.CLIENT_REPORT: return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
-      // 🔥 [수정] 차량 관제 뷰 삭제됨 (case ViewType.VEHICLE_TRACKING 제거)
       case ViewType.MASTER_CLIENT: return <MasterClientView clients={clients} onSave={handleSaveClient} onDelete={handleDeleteClient} />;
       case ViewType.MASTER_VEHICLE: return <MasterVehicleView vehicles={vehicles} userRole={user.role} onSave={handleSaveVehicle} onDelete={handleDeleteVehicle} />;
       case ViewType.MASTER_UNIT_PRICE: return <MasterUnitPriceView unitPrices={unitPrices} clients={clients} onSave={handleSaveUnitPrice} onDelete={handleDeleteUnitPrice} />;
       case ViewType.MASTER_SNIPPET: return <MasterSnippetView snippets={snippets} clients={clients} onSave={handleSaveSnippet} onDelete={handleDeleteSnippet} />;
       case ViewType.ACCOUNT_MGMT: return <AccountManagementView vehicles={vehicles} adminAccounts={adminAccounts} partnerAccounts={partnerAccounts} clients={clients} onSaveVehicle={handleSaveVehicle} onDeleteVehicle={handleDeleteVehicle} onAddVehicle={handleSaveVehicle} onAddAdmin={a => setAdminAccounts(prev => [...prev, a])} onUpdateAdmin={a => setAdminAccounts(prev => prev.map(x => x.id === a.id ? a : x))} onDeleteAdmin={id => setAdminAccounts(prev => prev.filter(x => x.id !== id))} onAddPartner={p => setPartnerAccounts(prev => [...prev, p])} onUpdatePartner={p => setPartnerAccounts(prev => prev.map(x => x.id === p.id ? p : x))} onDeletePartner={id => setPartnerAccounts(prev => prev.filter(x => x.id !== id))} />;
       case ViewType.CHANGE_PASSWORD: return <ChangePasswordView user={user} onUpdatePassword={() => true} />;
-      default: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={dispatches} />;
+      default: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={dispatches} onUpdateOperation={handleUpdateOperation} />;
     }
   };
 

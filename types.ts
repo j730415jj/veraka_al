@@ -1,10 +1,18 @@
-export type UserRole = 'ADMIN' | 'VEHICLE' | 'PARTNER';
+export type UserRole = 'ADMIN' | 'VEHICLE' | 'PARTNER' | 'CLIENT';
 
 export interface AuthUser {
   id: string;
   role: UserRole;
   name: string;
   identifier: string;
+  username: string; // 🔥 [에러 해결] 로그인 화면에서 필요함
+}
+
+// 🔥 [에러 해결] 대시보드 및 차량내역서용
+export interface Expense {
+  date: string;
+  amount: number;
+  note?: string;
 }
 
 export interface Vehicle {
@@ -19,6 +27,8 @@ export interface Vehicle {
   lng?: number;
   speed?: number;
   status?: string;
+  expenses?: Expense[]; // 🔥 [에러 해결] 대시보드 에러 방지
+  role?: string;
 }
 
 export interface Client {
@@ -32,6 +42,9 @@ export interface Client {
   fax?: string;
   businessType?: string;
   category?: string;
+  accessCode?: string; // 🔥 [에러 해결] 업체 로그인용 비번
+  representative?: string;
+  email?: string;
 }
 
 export interface Operation {
@@ -55,10 +68,8 @@ export interface Operation {
   itemDescription?: string;
   isVatIncluded?: boolean;
   isInvoiceIssued?: boolean;
-  // 👇 DB와 앱 양쪽 호환을 위해 둘 다 허용
   invoicePhoto?: string;
   invoice_photo?: string;
-  // 🔥 [추가] 매출(SALES) / 매입(PURCHASE) 구분
   type?: 'SALES' | 'PURCHASE'; 
 }
 
@@ -73,10 +84,10 @@ export interface Dispatch {
   remarks?: string;
   status: 'pending' | 'sent' | 'completed';
   count?: number; 
-  // 🔥 [추가] 배차 시 매출/매입 구분
   type?: 'SALES' | 'PURCHASE';
-  // 🔥 [추가] 관리자가 올린 송장 사진 (배차 단계에서 저장될 경우)
   invoicePhoto?: string;
+  time?: string;
+  isNujuk?: boolean;
 }
 
 export interface AdminAccount {
@@ -117,6 +128,19 @@ export interface PartnerAccount {
     clientName: string;
     phone?: string;
     role?: 'PARTNER'; 
+}
+
+// 🔥 [핵심 수정] ClientSummaryView 에러(image_e4bb37) 해결
+// 기존 코드가 totalCount 등을 찾는데, 실제 뷰 파일은 depositAmount 등을 쓰고 있어서 맞췄습니다.
+export interface SummaryData {
+    clientName: string;
+    depositAmount: number; // 입금(매출)
+    payoutAmount: number;  // 출금(지출/차량비)
+    margin: number;        // 마진
+    // 호환성을 위해 아래 필드도 남겨둠 (혹시 다른데서 쓸까봐)
+    clientId?: string;
+    totalCount?: number;
+    totalAmount?: number;
 }
 
 export enum ViewType {
