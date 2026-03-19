@@ -14,6 +14,7 @@
     "@vitejs/plugin-basic-ssl": "^2.1.4",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
+    "firebase": "^12.10.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.309.0",
     "react": "^18.2.0",

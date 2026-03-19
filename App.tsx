@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getFCMToken, onForegroundMessage } from './firebase';
 import { ViewType, Operation, Client, Vehicle, AuthUser, Dispatch, AdminAccount, UnitPriceMaster, Snippet, PartnerAccount } from './types';
 import { NAV_ITEMS, MOCK_ADMINS, MOCK_PARTNERS } from './constants';
 import { supabase } from './supabase'; 
@@ -36,7 +37,8 @@ const App: React.FC = () => {
   const [partnerAccounts, setPartnerAccounts] = useState<PartnerAccount[]>(MOCK_PARTNERS);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wakeLockRef = useRef<any>(null); 
+  const wakeLockRef = useRef<any>(null);
+  const locationIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
@@ -91,6 +93,33 @@ const App: React.FC = () => {
       else setCurrentView(ViewType.DASHBOARD);
     }
     fetchData();
+
+    // FCM 토큰 발급
+    getFCMToken().then(token => {
+      if (token) {
+        const savedUser = localStorage.getItem('veraka_user');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u.role === 'VEHICLE') {
+            supabase.from('vehicles')
+              .update({ fcm_token: token })
+              .eq('login_code', u.identifier)
+              .then(({ error }) => {
+                if (error) console.warn('FCM 토큰 저장 실패:', error);
+                else console.log('✅ FCM 토큰 저장 완료');
+              });
+          }
+        }
+      }
+    });
+
+    // 앱 열려있을 때 푸시 수신
+    onForegroundMessage((payload) => {
+      const title = payload.notification?.title || '베라카 알림';
+      const body = payload.notification?.body || '';
+      playAlertSound(title, body);
+      alert(`🔔 ${title}\n${body}`);
+    });
   }, []);
 
   // 실시간 감지
@@ -130,7 +159,8 @@ const App: React.FC = () => {
             }));
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`);
+              playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`);
+              fetchData(); // ✅ 배차완료 시 운행목록 자동 반영
             }
           }
           else if (payload.eventType === 'DELETE') {
@@ -172,20 +202,54 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  // 🔥 [수정됨] LoginView와 호환되도록 수정 (AuthUser 객체를 바로 받음)
+  // 위치 추적 시작
+  const startLocationTracking = (vehicleNo: string) => {
+    if (!navigator.geolocation) return;
+    const sendLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        async ({ coords }) => {
+          await supabase.from('vehicle_locations').upsert({
+            vehicle_no: vehicleNo,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            speed: coords.speed ? Math.round(coords.speed * 3.6) : 0,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'vehicle_no' });
+        },
+        (err) => console.warn('위치 오류:', err),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+    sendLocation();
+    locationIntervalRef.current = setInterval(sendLocation, 30000);
+  };
+
+  // 위치 추적 중지
+  const stopLocationTracking = () => {
+    if (locationIntervalRef.current) {
+      clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
+    }
+  };
+
   const handleLogin = (loggedInUser: AuthUser) => {
     setUser(loggedInUser);
-    
-    // 역할에 따라 첫 화면 분기
     let nextView = ViewType.DASHBOARD;
     if (loggedInUser.role === 'VEHICLE') nextView = ViewType.DISPATCH_MGMT;
     else if (loggedInUser.role === 'PARTNER') nextView = ViewType.OPERATION_ENTRY;
-    
     setCurrentView(nextView);
     localStorage.setItem('veraka_user', JSON.stringify(loggedInUser));
+    // 기사 로그인 시 위치 추적 시작
+    if (loggedInUser.role === 'VEHICLE') {
+      startLocationTracking(loggedInUser.identifier);
+    }
   };
 
-  const handleLogout = () => { setUser(null); localStorage.removeItem('veraka_user'); };
+  const handleLogout = () => {
+    stopLocationTracking();
+    setUser(null);
+    localStorage.removeItem('veraka_user');
+  };
 
   const handleSaveVehicle = async (v: Vehicle) => { const dbData = { vehicle_no: v.vehicleNo, owner_name: v.ownerName, phone: v.phone, password: v.password, login_code: v.loginCode }; const { error } = v.id.length === 36 ? await supabase.from('vehicles').update(dbData).eq('id', v.id) : await supabase.from('vehicles').insert(dbData); if(error) alert("저장 실패: " + error.message); else fetchData(); };
   const handleDeleteVehicle = async (id: string) => { if(window.confirm("삭제?")) { await supabase.from('vehicles').delete().eq('id', id); fetchData(); }};
@@ -200,10 +264,8 @@ const App: React.FC = () => {
   const handleUpdateDispatchStatus = async (id: string, status: 'pending'|'sent'|'completed', photo?: string, manualQuantity?: number) => { setDispatches(prev => prev.map(d => d.id === id ? { ...d, status } : d)); await supabase.from('dispatches').update({ status }).eq('id', id); fetchData(); };
 
   const renderView = () => {
-    // 🔥 [수정됨] handleLogin 함수 연결
     if (!user) return <LoginView onLogin={handleLogin} />;
     
-    // 기존 로직 유지
     const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) : user.role === 'VEHICLE' ? operations.filter(op => op.vehicleNo === user.identifier) : operations;
 
     switch (currentView) {
@@ -256,4 +318,5 @@ const App: React.FC = () => {
     </div>
   );
 };
+
 export default App;
