@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wakeLockRef = useRef<any>(null);
   const locationIntervalRef = useRef<any>(null);
+  const refreshIntervalRef = useRef<any>(null); // ✅ 6번: 자동 새로고침
 
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
@@ -94,6 +95,11 @@ const App: React.FC = () => {
     }
     fetchData();
 
+    // ✅ 6번: 30초마다 자동 새로고침
+    refreshIntervalRef.current = setInterval(() => {
+      fetchData();
+    }, 30000);
+
     // FCM 토큰 발급
     getFCMToken().then(token => {
       if (token) {
@@ -103,7 +109,7 @@ const App: React.FC = () => {
           if (u.role === 'VEHICLE') {
             supabase.from('vehicles')
               .update({ fcm_token: token })
-              .eq('login_code', u.identifier)
+              .eq('vehicle_no', u.identifier) // ✅ vehicle_no로 수정
               .then(({ error }) => {
                 if (error) console.warn('FCM 토큰 저장 실패:', error);
                 else console.log('✅ FCM 토큰 저장 완료');
@@ -120,6 +126,10 @@ const App: React.FC = () => {
       playAlertSound(title, body);
       alert(`🔔 ${title}\n${body}`);
     });
+
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    };
   }, []);
 
   // 실시간 감지
@@ -143,7 +153,10 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
-            if (user.role === 'VEHICLE' && String(newDispatch.vehicleNo) === String(user.identifier)) {
+            // ✅ 5번: 차량번호 부분 매칭으로 수정
+            const cleanVehicleNo = String(newDispatch.vehicleNo || '').replace(/\s+/g, '');
+            const cleanIdentifier = String(user.identifier || '').replace(/\s+/g, '');
+            if (user.role === 'VEHICLE' && (cleanVehicleNo.includes(cleanIdentifier) || cleanIdentifier.includes(cleanVehicleNo))) {
               playAlertSound("🔔 [배차] 새 오더 도착!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
             }
@@ -160,7 +173,7 @@ const App: React.FC = () => {
             const oldStatus = (payload.old as any).status;
             if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
               playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`);
-              fetchData(); // ✅ 배차완료 시 운행목록 자동 반영
+              fetchData();
             }
           }
           else if (payload.eventType === 'DELETE') {
@@ -202,7 +215,6 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  // 위치 추적 시작
   const startLocationTracking = (vehicleNo: string) => {
     if (!navigator.geolocation) return;
     const sendLocation = () => {
@@ -224,7 +236,6 @@ const App: React.FC = () => {
     locationIntervalRef.current = setInterval(sendLocation, 30000);
   };
 
-  // 위치 추적 중지
   const stopLocationTracking = () => {
     if (locationIntervalRef.current) {
       clearInterval(locationIntervalRef.current);
@@ -239,7 +250,6 @@ const App: React.FC = () => {
     else if (loggedInUser.role === 'PARTNER') nextView = ViewType.OPERATION_ENTRY;
     setCurrentView(nextView);
     localStorage.setItem('veraka_user', JSON.stringify(loggedInUser));
-    // 기사 로그인 시 위치 추적 시작
     if (loggedInUser.role === 'VEHICLE') {
       startLocationTracking(loggedInUser.identifier);
     }
@@ -266,13 +276,29 @@ const App: React.FC = () => {
   const renderView = () => {
     if (!user) return <LoginView onLogin={handleLogin} />;
     
-    const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) : user.role === 'VEHICLE' ? operations.filter(op => op.vehicleNo === user.identifier) : operations;
+    // ✅ 2번, 3번: 차량번호 부분 매칭으로 수정
+    const matchVehicle = (opVehicleNo: string, identifier: string) => {
+      const clean1 = String(opVehicleNo || '').replace(/\s+/g, '');
+      const clean2 = String(identifier || '').replace(/\s+/g, '');
+      return clean1.includes(clean2) || clean2.includes(clean1);
+    };
+
+    const filteredOps = user.role === 'PARTNER' 
+      ? operations.filter(op => op.clientName === user.identifier) 
+      : user.role === 'VEHICLE' 
+        ? operations.filter(op => matchVehicle(op.vehicleNo, user.identifier)) 
+        : operations;
+
+    // ✅ 5번: 배차도 차량번호 부분 매칭
+    const filteredDispatches = user.role === 'VEHICLE'
+      ? dispatches.filter(d => matchVehicle(d.vehicleNo, user.identifier))
+      : dispatches;
 
     switch (currentView) {
-      case ViewType.DASHBOARD: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={dispatches} onUpdateOperation={handleUpdateOperation} />;
+      case ViewType.DASHBOARD: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={filteredDispatches} onUpdateOperation={handleUpdateOperation} />;
       case ViewType.DISPATCH_MGMT:
         return <DispatchManagementView 
-            user={user} dispatches={dispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
+            user={user} dispatches={filteredDispatches} vehicles={vehicles} clients={clients} snippets={snippets} operations={operations} unitPrices={unitPrices} 
             onAddDispatch={async (d) => {
                 setDispatches(prev => [d, ...prev]);
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
@@ -306,7 +332,7 @@ const App: React.FC = () => {
       case ViewType.MASTER_SNIPPET: return <MasterSnippetView snippets={snippets} clients={clients} onSave={handleSaveSnippet} onDelete={handleDeleteSnippet} />;
       case ViewType.ACCOUNT_MGMT: return <AccountManagementView vehicles={vehicles} adminAccounts={adminAccounts} partnerAccounts={partnerAccounts} clients={clients} onSaveVehicle={handleSaveVehicle} onDeleteVehicle={handleDeleteVehicle} onAddVehicle={handleSaveVehicle} onAddAdmin={a => setAdminAccounts(prev => [...prev, a])} onUpdateAdmin={a => setAdminAccounts(prev => prev.map(x => x.id === a.id ? a : x))} onDeleteAdmin={id => setAdminAccounts(prev => prev.filter(x => x.id !== id))} onAddPartner={p => setPartnerAccounts(prev => [...prev, p])} onUpdatePartner={p => setPartnerAccounts(prev => prev.map(x => x.id === p.id ? p : x))} onDeletePartner={id => setPartnerAccounts(prev => prev.filter(x => x.id !== id))} />;
       case ViewType.CHANGE_PASSWORD: return <ChangePasswordView user={user} onUpdatePassword={() => true} />;
-      default: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={dispatches} onUpdateOperation={handleUpdateOperation} />;
+      default: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={filteredDispatches} onUpdateOperation={handleUpdateOperation} />;
     }
   };
 
@@ -320,4 +346,3 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
