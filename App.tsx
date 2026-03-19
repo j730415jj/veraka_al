@@ -17,7 +17,7 @@ import DashboardView from './components/DashboardView';
 import ChangePasswordView from './components/ChangePasswordView';
 import LoginView from './components/LoginView';
 import Header from './components/Header';
-
+import VehicleTrackingView from './components/VehicleTrackingView';
 import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
 import CompanyTransactionStatement from './components/CompanyTransactionStatement';
 import ClientTransactionStatement from './components/ClientTransactionStatement';
@@ -298,6 +298,7 @@ const App: React.FC = () => {
       case ViewType.VEHICLE_REPORT: return <VehicleTransactionStatementNew operations={filteredOps} vehicles={vehicles} />;
       case ViewType.COMPANY_REPORT: return <CompanyTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.CLIENT_REPORT: return <ClientTransactionStatement operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
+      case ViewType.VEHICLE_TRACKING: return <VehicleTrackingView vehicles={vehicles} />;
       case ViewType.TAX_INVOICE: return <StatementView key="tax" title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
       case ViewType.MASTER_CLIENT: return <MasterClientView clients={clients} onSave={handleSaveClient} onDelete={handleDeleteClient} />;
       case ViewType.MASTER_VEHICLE: return <MasterVehicleView vehicles={vehicles} userRole={user.role} onSave={handleSaveVehicle} onDelete={handleDeleteVehicle} />;
