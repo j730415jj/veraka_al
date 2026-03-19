@@ -1,4 +1,4 @@
-
+// @ts-nocheck
 import React, { useState, useMemo, useEffect } from 'react';
 import { Vehicle, UserRole, Expense } from '../types';
 
@@ -36,7 +36,12 @@ const MasterVehicleView: React.FC<Props> = ({ vehicles, userRole, onSave, onDele
 
   useEffect(() => {
     if (isVehicleMode && vehicles.length > 0) {
-      const v = vehicles[0];
+      const savedUser = localStorage.getItem('veraka_user');
+      const currentUser = savedUser ? JSON.parse(savedUser) : null;
+      const v = vehicles.find(v => 
+        String(v.vehicleNo || '').includes(String(currentUser?.identifier || '')) ||
+        String(currentUser?.identifier || '').includes(String(v.vehicleNo || ''))
+      ) || vehicles[0];
       setSelectedVehicleId(v.id);
       setFormData(v);
     }

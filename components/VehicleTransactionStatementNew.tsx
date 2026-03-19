@@ -33,7 +33,7 @@ export default function VehicleTransactionStatementNew({ operations, vehicles }:
   // 2. 초기값 설정
   useEffect(() => {
     if (isVehicleUser) {
-        setSelectedVehicleNo(currentUser.username); 
+        setSelectedVehicleNo(currentUser.identifier); 
     } else {
         if (!selectedVehicleNo) setSelectedVehicleNo('전체');
     }
