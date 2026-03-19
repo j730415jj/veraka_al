@@ -26,10 +26,10 @@ export const MOCK_OPERATIONS: Operation[] = [];
 export const MOCK_CLIENTS: Client[] = [
   {
     id: 'c1',
-    clientName: '동현',        // 수정됨: name -> clientName
-    presidentName: '장국용',   // 수정됨: ceo -> presidentName
+    clientName: '동현',
+    presidentName: '장국용',
     phone: '010-2332-4332',
-    businessNo: '406-81-64763', // 수정됨: regNo -> businessNo
+    businessNo: '406-81-64763',
     branches: ['본점', '포항지점'],
     address: '포항시 남구 연일읍 새천년대로 202. 2층',
     businessType: '도매및소매업',
@@ -58,7 +58,7 @@ export const NAV_ITEMS = [
   { label: '차량거래 내역서', value: ViewType.VEHICLE_REPORT, category: '현황관리', roles: ['ADMIN', 'VEHICLE'] },
   { label: '상호별 내역서', value: ViewType.COMPANY_REPORT, category: '현황관리', roles: ['ADMIN'] },
   { label: '거래처 내역서', value: ViewType.CLIENT_REPORT, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
-  // 🔥 [삭제됨] 실시간 위치 (VEHICLE_TRACKING) 제거 완료
+  { label: '실시간 위치', value: ViewType.VEHICLE_TRACKING, category: '현황관리', roles: ['ADMIN'] },
   { label: '세금 계산서', value: ViewType.TAX_INVOICE, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
   
   // 마스터 정보 관리 (ADMIN 전용)
