@@ -22,6 +22,24 @@ import VehicleTransactionStatementNew from './components/VehicleTransactionState
 import CompanyTransactionStatement from './components/CompanyTransactionStatement';
 import ClientTransactionStatement from './components/ClientTransactionStatement';
 
+const SUPABASE_FUNCTION_URL = 'https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/send-push-notification';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE';
+
+const sendPushNotification = async (vehicleNo: string, title: string, body: string) => {
+  try {
+    await fetch(SUPABASE_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({ vehicle_no: vehicleNo, title, body })
+    });
+  } catch (err) {
+    console.warn('푸시 발송 실패:', err);
+  }
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
@@ -39,7 +57,7 @@ const App: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wakeLockRef = useRef<any>(null);
   const locationIntervalRef = useRef<any>(null);
-  const refreshIntervalRef = useRef<any>(null); // ✅ 6번: 자동 새로고침
+  const refreshIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
@@ -95,12 +113,10 @@ const App: React.FC = () => {
     }
     fetchData();
 
-    // ✅ 6번: 30초마다 자동 새로고침
     refreshIntervalRef.current = setInterval(() => {
       fetchData();
     }, 30000);
 
-    // FCM 토큰 발급
     getFCMToken().then(token => {
       if (token) {
         const savedUser = localStorage.getItem('veraka_user');
@@ -109,7 +125,7 @@ const App: React.FC = () => {
           if (u.role === 'VEHICLE') {
             supabase.from('vehicles')
               .update({ fcm_token: token })
-              .eq('vehicle_no', u.identifier) // ✅ vehicle_no로 수정
+              .eq('vehicle_no', u.identifier)
               .then(({ error }) => {
                 if (error) console.warn('FCM 토큰 저장 실패:', error);
                 else console.log('✅ FCM 토큰 저장 완료');
@@ -119,7 +135,6 @@ const App: React.FC = () => {
       }
     });
 
-    // 앱 열려있을 때 푸시 수신
     onForegroundMessage((payload) => {
       const title = payload.notification?.title || '베라카 알림';
       const body = payload.notification?.body || '';
@@ -132,7 +147,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // 실시간 감지
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('global-changes')
@@ -153,7 +167,6 @@ const App: React.FC = () => {
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
-            // ✅ 5번: 차량번호 부분 매칭으로 수정
             const cleanVehicleNo = String(newDispatch.vehicleNo || '').replace(/\s+/g, '');
             const cleanIdentifier = String(user.identifier || '').replace(/\s+/g, '');
             if (user.role === 'VEHICLE' && (cleanVehicleNo.includes(cleanIdentifier) || cleanIdentifier.includes(cleanVehicleNo))) {
@@ -276,7 +289,6 @@ const App: React.FC = () => {
   const renderView = () => {
     if (!user) return <LoginView onLogin={handleLogin} />;
     
-    // ✅ 2번, 3번: 차량번호 부분 매칭으로 수정
     const matchVehicle = (opVehicleNo: string, identifier: string) => {
       const clean1 = String(opVehicleNo || '').replace(/\s+/g, '');
       const clean2 = String(identifier || '').replace(/\s+/g, '');
@@ -289,7 +301,6 @@ const App: React.FC = () => {
         ? operations.filter(op => matchVehicle(op.vehicleNo, user.identifier)) 
         : operations;
 
-    // ✅ 5번: 배차도 차량번호 부분 매칭
     const filteredDispatches = user.role === 'VEHICLE'
       ? dispatches.filter(d => matchVehicle(d.vehicleNo, user.identifier))
       : dispatches;
@@ -303,29 +314,7 @@ const App: React.FC = () => {
                 setDispatches(prev => [d, ...prev]);
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
-                // FCM 푸시 알림 발송
-try {
-  const targetVehicle = vehicles.find(v => v.vehicleNo === d.vehicleNo);
-  if (targetVehicle) {
-    await fetch('https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/send-push-notification', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE'
-      },
-      body: JSON.stringify({
-        vehicle_no: d.vehicleNo,
-        title: '🔔 새 배차 알림',
-        body: `${d.origin} ▶ ${d.destination} / ${d.item}`
-      })
-    });
-  }
-} catch (err) {
-  console.warn('푸시 발송 실패:', err);
-}
-```
-
-```
+                await sendPushNotification(d.vehicleNo, '🔔 새 배차 알림', `${d.origin} ▶ ${d.destination} / ${d.item}`);
                 fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
@@ -368,5 +357,5 @@ try {
     </div>
   );
 };
-export default App;
 
+export default App;
