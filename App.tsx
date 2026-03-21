@@ -117,6 +117,25 @@ const App: React.FC = () => {
       fetchData();
     }, 30000);
 
+    // ✅ 안드로이드 FCM 토큰 감지 및 저장
+    const checkAndroidToken = setInterval(() => {
+      const androidToken = (window as any).androidFcmToken;
+      if (androidToken) {
+        clearInterval(checkAndroidToken);
+        const savedUser = localStorage.getItem('veraka_user');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u.role === 'VEHICLE') {
+            supabase.from('vehicles')
+              .update({ fcm_token: androidToken })
+              .eq('vehicle_no', u.identifier)
+              .then(() => console.log('✅ 안드로이드 FCM 토큰 저장 완료'));
+          }
+        }
+      }
+    }, 1000);
+
+    // 웹 FCM 토큰 발급
     getFCMToken().then(token => {
       if (token) {
         const savedUser = localStorage.getItem('veraka_user');
