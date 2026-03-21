@@ -303,6 +303,29 @@ const App: React.FC = () => {
                 setDispatches(prev => [d, ...prev]);
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
+                // FCM 푸시 알림 발송
+try {
+  const targetVehicle = vehicles.find(v => v.vehicleNo === d.vehicleNo);
+  if (targetVehicle) {
+    await fetch('https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/send-push-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE'
+      },
+      body: JSON.stringify({
+        vehicle_no: d.vehicleNo,
+        title: '🔔 새 배차 알림',
+        body: `${d.origin} ▶ ${d.destination} / ${d.item}`
+      })
+    });
+  }
+} catch (err) {
+  console.warn('푸시 발송 실패:', err);
+}
+```
+
+```
                 fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
