@@ -119,13 +119,13 @@ const OperationEntryView: React.FC<Props> = ({
     link.click();
   };
 
-  // ✅ 클립보드에 이미지 복사 → 카카오톡 Ctrl+V 붙여넣기
+  // ✅ 1장 클립보드 복사
   const shareToKakao = async (op: Operation) => {
     if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
     try {
       const response = await fetch(op.invoicePhoto);
       const blob = await response.blob();
-      const imageBlob = blob.type === 'image/png' ? blob : new Blob([await blob.arrayBuffer()], { type: 'image/png' });
+      const imageBlob = new Blob([await blob.arrayBuffer()], { type: 'image/png' });
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': imageBlob })]);
       setSharedIds(prev => new Set([...prev, op.id]));
       if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
@@ -137,26 +137,88 @@ const OperationEntryView: React.FC<Props> = ({
     }
   };
 
-  // ✅ 여러 장 선택 공유
+  // ✅ 여러 장 이미지 합쳐서 클립보드 복사
   const shareSelectedToKakao = async () => {
     if (selectedIds.length === 0) { alert('선택된 항목이 없습니다.'); return; }
     const selectedOps = filteredOperations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (selectedOps.length === 0) { alert('선택된 항목 중 사진이 있는 것이 없습니다.'); return; }
-    if (selectedOps.length === 1) { await shareToKakao(selectedOps[0]); setSelectedIds([]); return; }
-    // 여러 장은 순서대로 다운로드
-    alert(`📥 ${selectedOps.length}장 사진을 다운로드합니다!\n카카오톡에서 파일 첨부하세요.`);
-    for (const op of selectedOps) {
-      const link = document.createElement('a');
-      link.href = op.invoicePhoto!;
-      link.download = `송장_${op.vehicleNo}_${op.date}.jpg`;
-      link.click();
-      await new Promise(r => setTimeout(r, 500));
+
+    if (selectedOps.length === 1) {
+      await shareToKakao(selectedOps[0]);
+      setSelectedIds([]);
+      return;
     }
-    selectedOps.forEach(op => {
-      setSharedIds(prev => new Set([...prev, op.id]));
-      if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
-    });
-    setSelectedIds([]);
+
+    try {
+      // 모든 이미지 로드
+      const images = await Promise.all(selectedOps.map(op => new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = op.invoicePhoto!;
+      })));
+
+      // 2열 그리드로 합치기
+      const cols = 2;
+      const rows = Math.ceil(images.length / cols);
+      const thumbW = 600;
+      const thumbH = 800;
+      const padding = 10;
+      const labelH = 40;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = cols * (thumbW + padding) + padding;
+      canvas.height = rows * (thumbH + labelH + padding) + padding;
+      const ctx = canvas.getContext('2d')!;
+
+      // 배경 흰색
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      images.forEach((img, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const x = padding + col * (thumbW + padding);
+        const y = padding + row * (thumbH + labelH + padding);
+        const op = selectedOps[idx];
+
+        // 이미지
+        ctx.drawImage(img, x, y, thumbW, thumbH);
+
+        // 라벨
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(x, y + thumbH, thumbW, labelH);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${op.vehicleNo} | ${op.date} | ${op.origin}→${op.destination}`, x + thumbW / 2, y + thumbH + 26);
+      });
+
+      // 캔버스 → Blob → 클립보드
+      canvas.toBlob(async (blob) => {
+        if (!blob) throw new Error('이미지 생성 실패');
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        selectedOps.forEach(op => {
+          setSharedIds(prev => new Set([...prev, op.id]));
+          if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
+        });
+        setSelectedIds([]);
+        alert(`✅ ${selectedOps.length}장 합쳐서 클립보드 복사됐습니다!\n카카오톡에서 Ctrl+V 하세요! 😊`);
+      }, 'image/png');
+
+    } catch (err) {
+      console.warn('합치기 실패, 다운로드로 대체:', err);
+      for (const op of selectedOps) {
+        const link = document.createElement('a');
+        link.href = op.invoicePhoto!;
+        link.download = `송장_${op.vehicleNo}_${op.date}.jpg`;
+        link.click();
+        await new Promise(r => setTimeout(r, 500));
+      }
+      setSelectedIds([]);
+      alert('📥 사진을 다운로드했습니다!');
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -274,7 +336,7 @@ const OperationEntryView: React.FC<Props> = ({
       {selectedIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
           <button onClick={shareSelectedToKakao} className="bg-yellow-400 text-white px-6 py-3 rounded-2xl font-black shadow-2xl text-sm flex items-center gap-2">
-            📤 선택한 {selectedIds.length}개 공유 (Ctrl+V로 카톡 붙여넣기)
+            📤 선택한 {selectedIds.length}개 합쳐서 카톡 공유
           </button>
         </div>
       )}
