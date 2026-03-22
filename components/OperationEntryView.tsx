@@ -2,10 +2,10 @@ import React, { useMemo, useState, useRef } from 'react';
 import { Operation, Vehicle, Client, UnitPriceMaster, AuthUser } from '../types';
 
 const colWidths = {
-  check: 'w-[40px]', date: 'w-[80px]', vehicle: 'w-[100px]', client: 'w-[120px]',
+  date: 'w-[80px]', vehicle: 'w-[100px]', client: 'w-[120px]',
   branch: 'w-[100px]', clientPrice: 'w-[100px]', origin: 'w-[150px]', dest: 'w-[150px]',
   unitPrice: 'w-[100px]', item: 'w-[120px]', qty: 'w-[80px]', supply: 'w-[110px]',
-  tax: 'w-[100px]', total: 'w-[120px]', photo: 'w-[140px]', remarks: 'w-[160px]', manage: 'w-[80px]',
+  tax: 'w-[100px]', total: 'w-[120px]', photo: 'w-[160px]', remarks: 'w-[160px]', manage: 'w-[80px]',
 };
 
 interface Props {
@@ -149,11 +149,8 @@ const OperationEntryView: React.FC<Props> = ({
     if (selectedOps.length === 1) { await shareToKakao(selectedOps[0]); setSelectedIds([]); return; }
     try {
       const images = await Promise.all(selectedOps.map(op => new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = op.invoicePhoto!;
+        const img = new Image(); img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img); img.onerror = reject; img.src = op.invoicePhoto!;
       })));
       const cols = 2; const rows = Math.ceil(images.length / cols);
       const thumbW = 600; const thumbH = 800; const padding = 10; const labelH = 40;
@@ -161,8 +158,7 @@ const OperationEntryView: React.FC<Props> = ({
       canvas.width = cols * (thumbW + padding) + padding;
       canvas.height = rows * (thumbH + labelH + padding) + padding;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
       images.forEach((img, idx) => {
         const col = idx % cols; const row = Math.floor(idx / cols);
         const x = padding + col * (thumbW + padding); const y = padding + row * (thumbH + labelH + padding);
@@ -181,8 +177,7 @@ const OperationEntryView: React.FC<Props> = ({
       }, 'image/png');
     } catch (err) {
       for (const op of selectedOps) { const link = document.createElement('a'); link.href = op.invoicePhoto!; link.download = `송장_${op.vehicleNo}_${op.date}.jpg`; link.click(); await new Promise(r => setTimeout(r, 500)); }
-      setSelectedIds([]);
-      alert('📥 사진을 다운로드했습니다!');
+      setSelectedIds([]); alert('📥 사진을 다운로드했습니다!');
     }
   };
 
@@ -203,18 +198,13 @@ const OperationEntryView: React.FC<Props> = ({
         <div className="mb-3 shrink-0">
             <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 font-bold bg-white dark:bg-slate-800 dark:text-white shadow-sm" />
         </div>
-
-        {/* ✅ 앱모드 선택공유 버튼 - 목록 위 */}
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 rounded-xl px-3 py-2 mb-3 shrink-0">
             <span className="text-xs font-bold text-yellow-700 flex-1">📋 {selectedIds.length}개 선택됨</span>
-            <button onClick={shareSelectedToKakao} className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1.5 rounded-lg font-black text-xs shadow">
-              📤 선택 공유 (합치기)
-            </button>
+            <button onClick={shareSelectedToKakao} className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1.5 rounded-lg font-black text-xs shadow">📤 선택 공유 (합치기)</button>
             <button onClick={() => setSelectedIds([])} className="text-slate-400 hover:text-red-400 text-xs font-bold px-1">✕</button>
           </div>
         )}
-
         <div className="flex-1 overflow-y-auto space-y-4 pb-20 custom-scrollbar">
             {filteredOperations.length > 0 ? filteredOperations.map(op => (
                 <div key={op.id} className={`bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border dark:border-slate-700 relative overflow-hidden ${selectedIds.includes(op.id) ? 'border-yellow-400 ring-2 ring-yellow-300' : 'border-slate-100'}`}>
@@ -343,21 +333,11 @@ const OperationEntryView: React.FC<Props> = ({
       {/* ✅ 선택 공유 버튼 - 운행목록 바로 위 */}
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-2.5 shrink-0">
-          <span className="text-sm font-bold text-yellow-700 flex-1">
-            📋 {selectedIds.length}개 선택됨
-          </span>
-          <button
-            onClick={shareSelectedToKakao}
-            className="bg-yellow-400 hover:bg-yellow-500 text-white px-4 py-1.5 rounded-lg font-black text-sm shadow"
-          >
+          <span className="text-sm font-bold text-yellow-700 flex-1">📋 {selectedIds.length}개 선택됨</span>
+          <button onClick={shareSelectedToKakao} className="bg-yellow-400 hover:bg-yellow-500 text-white px-4 py-1.5 rounded-lg font-black text-sm shadow">
             📤 선택 공유 (사진 합치기)
           </button>
-          <button
-            onClick={() => setSelectedIds([])}
-            className="text-slate-400 hover:text-red-400 text-xs font-bold"
-          >
-            ✕ 선택해제
-          </button>
+          <button onClick={() => setSelectedIds([])} className="text-slate-400 hover:text-red-400 text-xs font-bold">✕ 선택해제</button>
         </div>
       )}
 
@@ -370,12 +350,9 @@ const OperationEntryView: React.FC<Props> = ({
           .big-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
         `}</style>
         <div ref={scrollContainerRef} className="big-scroll flex-1 overflow-x-auto overflow-y-auto">
-          <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[2000px]">
+          <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[1960px]">
             <thead className="bg-[#445164] dark:bg-slate-800 text-white sticky top-0 z-30">
               <tr className="divide-x divide-slate-500 dark:divide-slate-700 text-center">
-                <th className="w-[40px] px-2 py-3 sticky left-0 bg-[#445164] z-40">
-                  <input type="checkbox" onChange={(e) => { if (e.target.checked) setSelectedIds(filteredOperations.filter(op => op.invoicePhoto).map(op => op.id)); else setSelectedIds([]); }} className="w-3 h-3" />
-                </th>
                 <th className={`${colWidths.date} px-2 py-3`}>일자</th>
                 <th className={`${colWidths.vehicle} px-2 py-3`}>차량번호</th>
                 <th className={`${colWidths.client} px-2 py-3`}>거래처명</th>
@@ -389,14 +366,19 @@ const OperationEntryView: React.FC<Props> = ({
                 <th className={`${colWidths.supply} px-2 py-3`}>공급가액</th>
                 <th className={`${colWidths.tax} px-2 py-3`}>세액</th>
                 <th className={`${colWidths.total} px-2 py-3`}>합계금액</th>
-                <th className={`${colWidths.photo} px-2 py-3`}>송장 / 공유</th>
+                {/* ✅ 체크박스 + 사진 + 공유 한 칸에 */}
+                <th className={`${colWidths.photo} px-2 py-3`}>
+                  <div className="flex items-center justify-center gap-1">
+                    <input type="checkbox" onChange={(e) => { if (e.target.checked) setSelectedIds(filteredOperations.filter(op => op.invoicePhoto).map(op => op.id)); else setSelectedIds([]); }} className="w-3 h-3" />
+                    <span>송장/공유</span>
+                  </div>
+                </th>
                 <th className={`${colWidths.remarks} px-2 py-3`}>비고</th>
                 <th className={`${colWidths.manage} px-2 py-3`}>관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
-                    <td className="p-1 sticky left-0 bg-amber-50"></td>
                     <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border rounded px-1 py-1 text-xs" /></td>
                     <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center font-bold" /></td>
                     <td className="p-1"><select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white border rounded px-0.5 py-1 text-xs font-bold"><option value="">거래처</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
@@ -414,9 +396,6 @@ const OperationEntryView: React.FC<Props> = ({
                 </tr>
                 {filteredOperations.map((op) => (
                     <tr key={op.id} className={`border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors divide-x divide-slate-100 dark:divide-slate-800 ${selectedIds.includes(op.id) ? 'bg-yellow-50' : ''}`}>
-                        <td className="px-2 py-2 text-center sticky left-0 bg-white dark:bg-slate-900">
-                          {op.invoicePhoto && <input type="checkbox" checked={selectedIds.includes(op.id)} onChange={() => toggleSelect(op.id)} className="w-3 h-3 cursor-pointer accent-yellow-400" />}
-                        </td>
                         <td className="px-2 py-2.5 text-center">{op.date.slice(5)}</td>
                         <td className="px-2 py-2.5 text-center font-bold">{op.vehicleNo}</td>
                         <td className="px-2 py-2.5 text-center font-bold text-rose-600">{op.clientName}</td>
@@ -430,10 +409,12 @@ const OperationEntryView: React.FC<Props> = ({
                         <td className="px-2 py-2.5 text-right font-bold text-slate-500">{op.supplyPrice.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-bold text-slate-500">{op.tax.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right font-black text-rose-600">{op.totalAmount.toLocaleString()}</td>
+                        {/* ✅ 체크박스 + 사진 + 공유버튼 한 칸에 */}
                         <td className="px-2 py-1 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {op.invoicePhoto ? (
                                 <>
+                                  <input type="checkbox" checked={selectedIds.includes(op.id)} onChange={() => toggleSelect(op.id)} className="w-3 h-3 cursor-pointer accent-yellow-400" />
                                   <img src={op.invoicePhoto} className="w-8 h-8 rounded border cursor-pointer hover:opacity-80" onClick={() => { setViewingOp(op); setZoom(1); }} />
                                   <button onClick={() => shareToKakao(op)} className={`text-[9px] px-1.5 py-1 rounded font-bold border transition-all ${sharedIds.has(op.id) || op.settlementStatus === 'SHARED' ? 'bg-yellow-400 text-white border-yellow-400' : 'bg-white text-yellow-600 border-yellow-300 hover:bg-yellow-50'}`}>
                                     {sharedIds.has(op.id) || op.settlementStatus === 'SHARED' ? '✅' : '📤'}
