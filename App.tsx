@@ -21,6 +21,7 @@ import VehicleTrackingView from './components/VehicleTrackingView';
 import VehicleTransactionStatementNew from './components/VehicleTransactionStatementNew';
 import CompanyTransactionStatement from './components/CompanyTransactionStatement';
 import ClientTransactionStatement from './components/ClientTransactionStatement';
+import SettingsView from './components/SettingsView';
 
 const SUPABASE_FUNCTION_URL = 'https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/send-push-notification';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE';
@@ -117,7 +118,6 @@ const App: React.FC = () => {
       fetchData();
     }, 30000);
 
-    // ✅ 안드로이드 FCM 토큰 감지 및 저장
     const checkAndroidToken = setInterval(() => {
       const androidToken = (window as any).androidFcmToken;
       if (androidToken) {
@@ -135,7 +135,6 @@ const App: React.FC = () => {
       }
     }, 1000);
 
-    // 웹 FCM 토큰 발급
     getFCMToken().then(token => {
       if (token) {
         const savedUser = localStorage.getItem('veraka_user');
@@ -363,6 +362,7 @@ const App: React.FC = () => {
       case ViewType.MASTER_SNIPPET: return <MasterSnippetView snippets={snippets} clients={clients} onSave={handleSaveSnippet} onDelete={handleDeleteSnippet} />;
       case ViewType.ACCOUNT_MGMT: return <AccountManagementView vehicles={vehicles} adminAccounts={adminAccounts} partnerAccounts={partnerAccounts} clients={clients} onSaveVehicle={handleSaveVehicle} onDeleteVehicle={handleDeleteVehicle} onAddVehicle={handleSaveVehicle} onAddAdmin={a => setAdminAccounts(prev => [...prev, a])} onUpdateAdmin={a => setAdminAccounts(prev => prev.map(x => x.id === a.id ? a : x))} onDeleteAdmin={id => setAdminAccounts(prev => prev.filter(x => x.id !== id))} onAddPartner={p => setPartnerAccounts(prev => [...prev, p])} onUpdatePartner={p => setPartnerAccounts(prev => prev.map(x => x.id === p.id ? p : x))} onDeletePartner={id => setPartnerAccounts(prev => prev.filter(x => x.id !== id))} />;
       case ViewType.CHANGE_PASSWORD: return <ChangePasswordView user={user} onUpdatePassword={() => true} />;
+      case ViewType.SETTINGS: return <SettingsView />;
       default: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={filteredDispatches} onUpdateOperation={handleUpdateOperation} />;
     }
   };

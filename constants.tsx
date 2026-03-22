@@ -60,15 +60,12 @@ export const NAV_ITEMS = [
   { label: '거래처 내역서', value: ViewType.CLIENT_REPORT, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
   { label: '실시간 위치', value: ViewType.VEHICLE_TRACKING, category: '현황관리', roles: ['ADMIN'] },
   { label: '세금 계산서', value: ViewType.TAX_INVOICE, category: '현황관리', roles: ['ADMIN', 'PARTNER'] },
-  
-  // 마스터 정보 관리 (ADMIN 전용)
   { label: '거래처 정보', value: ViewType.MASTER_CLIENT, category: '목록관리', roles: ['ADMIN'] },
   { label: '차량 정보', value: ViewType.MASTER_VEHICLE, category: '목록관리', roles: ['ADMIN'] },
   { label: '단가 설정', value: ViewType.MASTER_UNIT_PRICE, category: '목록관리', roles: ['ADMIN'] },
   { label: '배차 스니펫', value: ViewType.MASTER_SNIPPET, category: '목록관리', roles: ['ADMIN'] },
   { label: '계정 관리', value: ViewType.ACCOUNT_MGMT, category: '목록관리', roles: ['ADMIN'] },
   { label: '비밀번호 변경', value: ViewType.CHANGE_PASSWORD, category: '목록관리', roles: ['ADMIN', 'VEHICLE', 'PARTNER'] },
-  
-  // 기사님 전용
   { label: '나의 지출 관리', value: ViewType.MASTER_VEHICLE, category: '현황관리', roles: ['VEHICLE'] },
+  { label: '⚙️ 설정', value: ViewType.SETTINGS, category: '설정', roles: ['ADMIN'] },
 ];

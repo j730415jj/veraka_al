@@ -5,10 +5,9 @@ export interface AuthUser {
   role: UserRole;
   name: string;
   identifier: string;
-  username: string; // 🔥 [에러 해결] 로그인 화면에서 필요함
+  username: string;
 }
 
-// 🔥 [에러 해결] 대시보드 및 차량내역서용
 export interface Expense {
   date: string;
   amount: number;
@@ -27,7 +26,7 @@ export interface Vehicle {
   lng?: number;
   speed?: number;
   status?: string;
-  expenses?: Expense[]; // 🔥 [에러 해결] 대시보드 에러 방지
+  expenses?: Expense[];
   role?: string;
 }
 
@@ -42,7 +41,7 @@ export interface Client {
   fax?: string;
   businessType?: string;
   category?: string;
-  accessCode?: string; // 🔥 [에러 해결] 업체 로그인용 비번
+  accessCode?: string;
   representative?: string;
   email?: string;
 }
@@ -130,14 +129,11 @@ export interface PartnerAccount {
     role?: 'PARTNER'; 
 }
 
-// 🔥 [핵심 수정] ClientSummaryView 에러(image_e4bb37) 해결
-// 기존 코드가 totalCount 등을 찾는데, 실제 뷰 파일은 depositAmount 등을 쓰고 있어서 맞췄습니다.
 export interface SummaryData {
     clientName: string;
-    depositAmount: number; // 입금(매출)
-    payoutAmount: number;  // 출금(지출/차량비)
-    margin: number;        // 마진
-    // 호환성을 위해 아래 필드도 남겨둠 (혹시 다른데서 쓸까봐)
+    depositAmount: number;
+    payoutAmount: number;
+    margin: number;
     clientId?: string;
     totalCount?: number;
     totalAmount?: number;
@@ -159,4 +155,5 @@ export enum ViewType {
   MASTER_SNIPPET = 'MASTER_SNIPPET',
   ACCOUNT_MGMT = 'ACCOUNT_MGMT',
   CHANGE_PASSWORD = 'CHANGE_PASSWORD',
+  SETTINGS = 'SETTINGS', // ✅ 7번: 설정 메뉴 추가
 }
