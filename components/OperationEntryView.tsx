@@ -5,8 +5,7 @@ const colWidths = {
   check: 'w-[40px]', date: 'w-[80px]', vehicle: 'w-[100px]', client: 'w-[120px]',
   branch: 'w-[100px]', clientPrice: 'w-[100px]', origin: 'w-[150px]', dest: 'w-[150px]',
   unitPrice: 'w-[100px]', item: 'w-[120px]', qty: 'w-[80px]', supply: 'w-[110px]',
-  tax: 'w-[100px]', total: 'w-[120px]', photo: 'w-[140px]', trans: 'w-[70px]',
-  invoice: 'w-[70px]', remarks: 'w-[200px]', manage: 'w-[100px]',
+  tax: 'w-[100px]', total: 'w-[120px]', photo: 'w-[140px]', remarks: 'w-[160px]', manage: 'w-[80px]',
 };
 
 interface Props {
@@ -43,6 +42,8 @@ const OperationEntryView: React.FC<Props> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isAppAdding, setIsAppAdding] = useState(false);
   const [sharedIds, setSharedIds] = useState<Set<string>>(new Set());
+  const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
+  const [editingRemarkValue, setEditingRemarkValue] = useState('');
 
   const [newEntry, setNewEntry] = useState<Partial<Operation>>({
     date: new Date().toISOString().split('T')[0],
@@ -98,6 +99,12 @@ const OperationEntryView: React.FC<Props> = ({
     else { if (scrollContainerRef.current) scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
+  const saveRemark = async (op: Operation) => {
+    await onUpdateOperation({ ...op, remarks: editingRemarkValue });
+    setEditingRemarkId(null);
+    setEditingRemarkValue('');
+  };
+
   const filteredOperations = useMemo(() => {
     return operations.filter(op => {
       if (isVehicle && op.vehicleNo !== user.identifier) return false;
@@ -119,7 +126,6 @@ const OperationEntryView: React.FC<Props> = ({
     link.click();
   };
 
-  // ✅ 1장 클립보드 복사
   const shareToKakao = async (op: Operation) => {
     if (!op.invoicePhoto) { alert('공유할 사진이 없습니다.'); return; }
     try {
@@ -131,26 +137,17 @@ const OperationEntryView: React.FC<Props> = ({
       if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
       alert('✅ 클립보드에 복사됐습니다!\n카카오톡 채팅방에서 Ctrl+V 하세요! 😊');
     } catch (err) {
-      console.warn('클립보드 실패, 다운로드로 대체:', err);
       handleDownload(op);
       alert('📥 사진을 다운로드했습니다!\n카카오톡에서 파일 첨부하세요.');
     }
   };
 
-  // ✅ 여러 장 이미지 합쳐서 클립보드 복사
   const shareSelectedToKakao = async () => {
     if (selectedIds.length === 0) { alert('선택된 항목이 없습니다.'); return; }
     const selectedOps = filteredOperations.filter(op => selectedIds.includes(op.id) && op.invoicePhoto);
     if (selectedOps.length === 0) { alert('선택된 항목 중 사진이 있는 것이 없습니다.'); return; }
-
-    if (selectedOps.length === 1) {
-      await shareToKakao(selectedOps[0]);
-      setSelectedIds([]);
-      return;
-    }
-
+    if (selectedOps.length === 1) { await shareToKakao(selectedOps[0]); setSelectedIds([]); return; }
     try {
-      // 모든 이미지 로드
       const images = await Promise.all(selectedOps.map(op => new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -158,64 +155,32 @@ const OperationEntryView: React.FC<Props> = ({
         img.onerror = reject;
         img.src = op.invoicePhoto!;
       })));
-
-      // 2열 그리드로 합치기
-      const cols = 2;
-      const rows = Math.ceil(images.length / cols);
-      const thumbW = 600;
-      const thumbH = 800;
-      const padding = 10;
-      const labelH = 40;
-
+      const cols = 2; const rows = Math.ceil(images.length / cols);
+      const thumbW = 600; const thumbH = 800; const padding = 10; const labelH = 40;
       const canvas = document.createElement('canvas');
       canvas.width = cols * (thumbW + padding) + padding;
       canvas.height = rows * (thumbH + labelH + padding) + padding;
       const ctx = canvas.getContext('2d')!;
-
-      // 배경 흰색
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       images.forEach((img, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        const x = padding + col * (thumbW + padding);
-        const y = padding + row * (thumbH + labelH + padding);
+        const col = idx % cols; const row = Math.floor(idx / cols);
+        const x = padding + col * (thumbW + padding); const y = padding + row * (thumbH + labelH + padding);
         const op = selectedOps[idx];
-
-        // 이미지
         ctx.drawImage(img, x, y, thumbW, thumbH);
-
-        // 라벨
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(x, y + thumbH, thumbW, labelH);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
+        ctx.fillStyle = '#1e293b'; ctx.fillRect(x, y + thumbH, thumbW, labelH);
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center';
         ctx.fillText(`${op.vehicleNo} | ${op.date} | ${op.origin}→${op.destination}`, x + thumbW / 2, y + thumbH + 26);
       });
-
-      // 캔버스 → Blob → 클립보드
       canvas.toBlob(async (blob) => {
         if (!blob) throw new Error('이미지 생성 실패');
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        selectedOps.forEach(op => {
-          setSharedIds(prev => new Set([...prev, op.id]));
-          if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' });
-        });
+        selectedOps.forEach(op => { setSharedIds(prev => new Set([...prev, op.id])); if (onUpdateOperation) onUpdateOperation({ ...op, settlementStatus: 'SHARED' }); });
         setSelectedIds([]);
         alert(`✅ ${selectedOps.length}장 합쳐서 클립보드 복사됐습니다!\n카카오톡에서 Ctrl+V 하세요! 😊`);
       }, 'image/png');
-
     } catch (err) {
-      console.warn('합치기 실패, 다운로드로 대체:', err);
-      for (const op of selectedOps) {
-        const link = document.createElement('a');
-        link.href = op.invoicePhoto!;
-        link.download = `송장_${op.vehicleNo}_${op.date}.jpg`;
-        link.click();
-        await new Promise(r => setTimeout(r, 500));
-      }
+      for (const op of selectedOps) { const link = document.createElement('a'); link.href = op.invoicePhoto!; link.download = `송장_${op.vehicleNo}_${op.date}.jpg`; link.click(); await new Promise(r => setTimeout(r, 500)); }
       setSelectedIds([]);
       alert('📥 사진을 다운로드했습니다!');
     }
@@ -235,18 +200,36 @@ const OperationEntryView: React.FC<Props> = ({
                 <button onClick={() => setIsAppAdding(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold shadow-lg active:scale-95 transition-transform">➕ 배차 등록</button>
             </div>
         </div>
-        <div className="mb-4 shrink-0">
+        <div className="mb-3 shrink-0">
             <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 font-bold bg-white dark:bg-slate-800 dark:text-white shadow-sm" />
         </div>
+
+        {/* ✅ 앱모드 선택공유 버튼 - 목록 위 */}
+        {selectedIds.length > 0 && (
+          <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 rounded-xl px-3 py-2 mb-3 shrink-0">
+            <span className="text-xs font-bold text-yellow-700 flex-1">📋 {selectedIds.length}개 선택됨</span>
+            <button onClick={shareSelectedToKakao} className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1.5 rounded-lg font-black text-xs shadow">
+              📤 선택 공유 (합치기)
+            </button>
+            <button onClick={() => setSelectedIds([])} className="text-slate-400 hover:text-red-400 text-xs font-bold px-1">✕</button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto space-y-4 pb-20 custom-scrollbar">
             {filteredOperations.length > 0 ? filteredOperations.map(op => (
-                <div key={op.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 relative overflow-hidden">
+                <div key={op.id} className={`bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border dark:border-slate-700 relative overflow-hidden ${selectedIds.includes(op.id) ? 'border-yellow-400 ring-2 ring-yellow-300' : 'border-slate-100'}`}>
                     <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider ${op.settlementStatus === 'SHARED' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
                         {op.settlementStatus === 'SHARED' ? '완료됨' : '대기중'}
                     </div>
                     <div className="flex items-center gap-3 mb-3">
                         <span className="text-xs font-black text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg">{op.date.slice(5)}</span>
                         <span className="text-lg font-black text-slate-800 dark:text-white">{op.vehicleNo}</span>
+                        {op.invoicePhoto && (
+                          <label className="ml-auto flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" checked={selectedIds.includes(op.id)} onChange={() => toggleSelect(op.id)} className="w-4 h-4 accent-yellow-400" />
+                            <span className="text-xs text-slate-400 font-bold">선택</span>
+                          </label>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 mb-4">
                         <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl text-center"><span className="block text-[10px] text-slate-400 font-bold">상차</span><span className="text-sm font-bold text-slate-700 dark:text-slate-300 truncate">{op.origin}</span></div>
@@ -333,14 +316,7 @@ const OperationEntryView: React.FC<Props> = ({
       <datalist id="past-vehicles">{memory.vehicles.map(v => <option key={v} value={v} />)}</datalist>
       <datalist id="past-branches">{memory.branches.map(b => <option key={b} value={b} />)}</datalist>
 
-      {selectedIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-          <button onClick={shareSelectedToKakao} className="bg-yellow-400 text-white px-6 py-3 rounded-2xl font-black shadow-2xl text-sm flex items-center gap-2">
-            📤 선택한 {selectedIds.length}개 합쳐서 카톡 공유
-          </button>
-        </div>
-      )}
-
+      {/* 필터 박스 */}
       <div className="bg-white dark:bg-slate-900 p-3 md:p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 no-print transition-colors shrink-0">
         <div className="flex justify-between mb-2">
             <h3 className="font-bold text-slate-600 dark:text-slate-300">PC 관리자 모드</h3>
@@ -364,6 +340,28 @@ const OperationEntryView: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* ✅ 선택 공유 버튼 - 운행목록 바로 위 */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-2.5 shrink-0">
+          <span className="text-sm font-bold text-yellow-700 flex-1">
+            📋 {selectedIds.length}개 선택됨
+          </span>
+          <button
+            onClick={shareSelectedToKakao}
+            className="bg-yellow-400 hover:bg-yellow-500 text-white px-4 py-1.5 rounded-lg font-black text-sm shadow"
+          >
+            📤 선택 공유 (사진 합치기)
+          </button>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="text-slate-400 hover:text-red-400 text-xs font-bold"
+          >
+            ✕ 선택해제
+          </button>
+        </div>
+      )}
+
+      {/* 테이블 */}
       <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col transition-colors min-h-0 relative">
         <style>{`
           .big-scroll::-webkit-scrollbar { height: 14px; width: 14px; }
@@ -372,10 +370,10 @@ const OperationEntryView: React.FC<Props> = ({
           .big-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
         `}</style>
         <div ref={scrollContainerRef} className="big-scroll flex-1 overflow-x-auto overflow-y-auto">
-          <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[1900px]">
+          <table className="w-full text-[11px] text-left border-collapse table-fixed min-w-[2000px]">
             <thead className="bg-[#445164] dark:bg-slate-800 text-white sticky top-0 z-30">
               <tr className="divide-x divide-slate-500 dark:divide-slate-700 text-center">
-                <th className="w-[40px] px-2 py-3">
+                <th className="w-[40px] px-2 py-3 sticky left-0 bg-[#445164] z-40">
                   <input type="checkbox" onChange={(e) => { if (e.target.checked) setSelectedIds(filteredOperations.filter(op => op.invoicePhoto).map(op => op.id)); else setSelectedIds([]); }} className="w-3 h-3" />
                 </th>
                 <th className={`${colWidths.date} px-2 py-3`}>일자</th>
@@ -392,12 +390,13 @@ const OperationEntryView: React.FC<Props> = ({
                 <th className={`${colWidths.tax} px-2 py-3`}>세액</th>
                 <th className={`${colWidths.total} px-2 py-3`}>합계금액</th>
                 <th className={`${colWidths.photo} px-2 py-3`}>송장 / 공유</th>
+                <th className={`${colWidths.remarks} px-2 py-3`}>비고</th>
                 <th className={`${colWidths.manage} px-2 py-3`}>관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 <tr className="bg-amber-50 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 divide-x divide-slate-200 dark:divide-slate-800 no-print shadow-md sticky top-[41px] z-20">
-                    <td className="p-1"></td>
+                    <td className="p-1 sticky left-0 bg-amber-50"></td>
                     <td className="p-1"><input type="date" name="date" value={newEntry.date} onChange={handleNewEntryChange} className="w-full bg-white dark:bg-slate-800 border rounded px-1 py-1 text-xs" /></td>
                     <td className="p-1"><input type="text" name="vehicleNo" list="past-vehicles" value={newEntry.vehicleNo} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs text-center font-bold" /></td>
                     <td className="p-1"><select name="clientName" value={newEntry.clientName} onChange={handleNewEntryChange} disabled={isPartner} className="w-full bg-white border rounded px-0.5 py-1 text-xs font-bold"><option value="">거래처</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></td>
@@ -410,12 +409,13 @@ const OperationEntryView: React.FC<Props> = ({
                     <td className="p-1"><input type="number" step="0.01" name="quantity" value={newEntry.quantity} onChange={handleNewEntryChange} className="w-full bg-white border rounded px-1 py-1 text-xs font-bold text-center" /></td>
                     <td colSpan={3} className="p-2 text-center text-slate-400 font-bold">자동계산</td>
                     <td className="p-1 text-center bg-amber-50 text-[9px] text-slate-400">사진</td>
+                    <td className="p-1"><input type="text" name="remarks" value={newEntry.remarks} onChange={handleNewEntryChange} placeholder="비고" className="w-full bg-white border rounded px-1 py-1 text-xs" /></td>
                     <td className="p-1 text-center"><button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white w-full py-1.5 rounded text-xs font-black shadow-md">등록</button></td>
                 </tr>
                 {filteredOperations.map((op) => (
-                    <tr key={op.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors divide-x divide-slate-100 dark:divide-slate-800">
-                        <td className="px-2 py-2 text-center">
-                          {op.invoicePhoto && <input type="checkbox" checked={selectedIds.includes(op.id)} onChange={() => toggleSelect(op.id)} className="w-3 h-3 cursor-pointer" />}
+                    <tr key={op.id} className={`border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors divide-x divide-slate-100 dark:divide-slate-800 ${selectedIds.includes(op.id) ? 'bg-yellow-50' : ''}`}>
+                        <td className="px-2 py-2 text-center sticky left-0 bg-white dark:bg-slate-900">
+                          {op.invoicePhoto && <input type="checkbox" checked={selectedIds.includes(op.id)} onChange={() => toggleSelect(op.id)} className="w-3 h-3 cursor-pointer accent-yellow-400" />}
                         </td>
                         <td className="px-2 py-2.5 text-center">{op.date.slice(5)}</td>
                         <td className="px-2 py-2.5 text-center font-bold">{op.vehicleNo}</td>
@@ -441,6 +441,18 @@ const OperationEntryView: React.FC<Props> = ({
                                 </>
                               ) : <span className="text-slate-300">-</span>}
                             </div>
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          {editingRemarkId === op.id ? (
+                            <div className="flex gap-1">
+                              <input type="text" value={editingRemarkValue} onChange={e => setEditingRemarkValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveRemark(op); if (e.key === 'Escape') setEditingRemarkId(null); }} className="w-full border rounded px-1 py-0.5 text-xs" autoFocus />
+                              <button onClick={() => saveRemark(op)} className="bg-blue-500 text-white px-1.5 py-0.5 rounded text-[9px] font-bold">저장</button>
+                            </div>
+                          ) : (
+                            <div onClick={() => { setEditingRemarkId(op.id); setEditingRemarkValue(op.remarks || ''); }} className="min-h-[20px] cursor-pointer hover:bg-slate-100 rounded px-1 text-left text-slate-600 truncate" title={op.remarks || '클릭하여 비고 입력'}>
+                              {op.remarks || <span className="text-slate-300 text-[9px]">클릭하여 입력</span>}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2 text-center">
                             <button onClick={() => onDeleteOperation(op.id)} className="text-red-400 hover:text-red-600 font-bold">삭제</button>
