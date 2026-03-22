@@ -30,22 +30,16 @@ const sendPushNotification = async (vehicleNo: string, title: string, body: stri
   try {
     await fetch(SUPABASE_FUNCTION_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
       body: JSON.stringify({ vehicle_no: vehicleNo, title, body })
     });
-  } catch (err) {
-    console.warn('푸시 발송 실패:', err);
-  }
+  } catch (err) { console.warn('푸시 발송 실패:', err); }
 };
 
 const App: React.FC = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.DASHBOARD);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
-
   const [operations, setOperations] = useState<Operation[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -63,24 +57,10 @@ const App: React.FC = () => {
   useEffect(() => {
     audioRef.current = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
     audioRef.current.load();
-
-    if ("Notification" in window && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-    
+    if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
     const unlockAudioAndScreen = async () => {
-      if(audioRef.current) {
-        audioRef.current.volume = 1.0; 
-        audioRef.current.play().then(() => {
-          audioRef.current?.pause();
-          audioRef.current!.currentTime = 0;
-        }).catch(() => {});
-      }
-      try { 
-        if ('wakeLock' in navigator) {
-          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        }
-      } catch (err) {}
+      if(audioRef.current) { audioRef.current.volume = 1.0; audioRef.current.play().then(() => { audioRef.current?.pause(); audioRef.current!.currentTime = 0; }).catch(() => {}); }
+      try { if ('wakeLock' in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
       document.removeEventListener('click', unlockAudioAndScreen);
       document.removeEventListener('touchstart', unlockAudioAndScreen);
     };
@@ -90,16 +70,9 @@ const App: React.FC = () => {
 
   const playAlertSound = (title: string, body: string) => {
     try {
-      if (audioRef.current) { 
-        audioRef.current.currentTime = 0; 
-        audioRef.current.play().catch(e => console.warn(e)); 
-      }
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]); 
-      }
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, { body, icon: '/vite.svg' });
-      }
+      if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(e => console.warn(e)); }
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]);
+      if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: '/vite.svg' });
     } catch (e) { console.error(e); }
   };
 
@@ -113,10 +86,7 @@ const App: React.FC = () => {
       else setCurrentView(ViewType.DASHBOARD);
     }
     fetchData();
-
-    refreshIntervalRef.current = setInterval(() => {
-      fetchData();
-    }, 30000);
+    refreshIntervalRef.current = setInterval(() => { fetchData(); }, 30000);
 
     const checkAndroidToken = setInterval(() => {
       const androidToken = (window as any).androidFcmToken;
@@ -126,9 +96,7 @@ const App: React.FC = () => {
         if (savedUser) {
           const u = JSON.parse(savedUser);
           if (u.role === 'VEHICLE') {
-            supabase.from('vehicles')
-              .update({ fcm_token: androidToken })
-              .eq('vehicle_no', u.identifier)
+            supabase.from('vehicles').update({ fcm_token: androidToken }).eq('vehicle_no', u.identifier)
               .then(() => console.log('✅ 안드로이드 FCM 토큰 저장 완료'));
           }
         }
@@ -141,13 +109,8 @@ const App: React.FC = () => {
         if (savedUser) {
           const u = JSON.parse(savedUser);
           if (u.role === 'VEHICLE') {
-            supabase.from('vehicles')
-              .update({ fcm_token: token })
-              .eq('vehicle_no', u.identifier)
-              .then(({ error }) => {
-                if (error) console.warn('FCM 토큰 저장 실패:', error);
-                else console.log('✅ FCM 토큰 저장 완료');
-              });
+            supabase.from('vehicles').update({ fcm_token: token }).eq('vehicle_no', u.identifier)
+              .then(({ error }) => { if (error) console.warn('FCM 토큰 저장 실패:', error); else console.log('✅ FCM 토큰 저장 완료'); });
           }
         }
       }
@@ -160,9 +123,7 @@ const App: React.FC = () => {
       alert(`🔔 ${title}\n${body}`);
     });
 
-    return () => {
-      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
-    };
+    return () => { if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current); };
   }, []);
 
   useEffect(() => {
@@ -172,16 +133,11 @@ const App: React.FC = () => {
           const newD = payload.new as any;
           const safeVehicleNo = newD.vehicle_no || newD.vehicleNo || '';
           const safeClientName = newD.client_name || newD.clientName || '';
-
           const convertDispatch = (d: any): Dispatch => ({
-            id: d.id, date: d.date, 
-            clientName: safeClientName, 
-            vehicleNo: safeVehicleNo,
+            id: d.id, date: d.date, clientName: safeClientName, vehicleNo: safeVehicleNo,
             origin: d.origin, destination: d.destination, item: d.item, count: d.count,
-            remarks: d.remarks, status: d.status,
-            type: d.type
+            remarks: d.remarks, status: d.status, type: d.type
           });
-
           if (payload.eventType === 'INSERT') {
             const newDispatch = convertDispatch(newD);
             setDispatches(prev => [newDispatch, ...prev]);
@@ -191,29 +147,14 @@ const App: React.FC = () => {
               playAlertSound("🔔 [배차] 새 오더 도착!", `${newDispatch.origin} ▶ ${newDispatch.destination}`);
               setTimeout(() => alert(`🔔 [새 배차 알림]\n\n상차: ${newDispatch.origin}\n하차: ${newDispatch.destination}\n품명: ${newDispatch.item}`), 200);
             }
-          } 
-          else if (payload.eventType === 'UPDATE') {
+          } else if (payload.eventType === 'UPDATE') {
             const updated = convertDispatch(newD);
-            setDispatches(prev => prev.map(d => {
-                if (d.id === updated.id) {
-                    const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo;
-                    return { ...d, ...updated, vehicleNo: protectedVehicleNo };
-                }
-                return d;
-            }));
+            setDispatches(prev => prev.map(d => { if (d.id === updated.id) { const protectedVehicleNo = updated.vehicleNo ? updated.vehicleNo : d.vehicleNo; return { ...d, ...updated, vehicleNo: protectedVehicleNo }; } return d; }));
             const oldStatus = (payload.old as any).status;
-            if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') {
-              playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`);
-              fetchData();
-            }
-          }
-          else if (payload.eventType === 'DELETE') {
-             setDispatches(prev => prev.filter(d => d.id !== payload.old.id));
-          }
+            if (user.role === 'ADMIN' && updated.status === 'completed' && oldStatus !== 'completed') { playAlertSound("✅ 운행 완료", `차량: ${updated.vehicleNo}`); fetchData(); }
+          } else if (payload.eventType === 'DELETE') { setDispatches(prev => prev.filter(d => d.id !== payload.old.id)); }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, () => {
-          fetchData(); 
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'operations' }, () => { fetchData(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user]);
@@ -229,7 +170,6 @@ const App: React.FC = () => {
         supabase.from('snippets').select('*'),
         supabase.from('dispatches').select('*').order('created_at', { ascending: false }).limit(200)
       ]);
-
       if (v.data) setVehicles(v.data.map((x:any) => ({ ...x, id: x.id, vehicleNo: x.vehicle_no || x.vehicleNo || '', ownerName: x.owner_name || x.ownerName || '', loginCode: x.login_code || x.loginCode || '', password: x.password || '', type: 'VEHICLE' })));
       if (c.data) setClients(c.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name || x.clientName || '', presidentName: x.president_name || x.presidentName || '', businessNo: x.business_no || x.businessNo || '', businessType: x.business_type || x.businessType || '', branches: x.branches })));
       if (o.data) setOperations(o.data.map((x:any) => ({ ...x, id: x.id, date: x.date || '', clientName: x.client_name || x.clientName || '', vehicleNo: x.vehicle_no || x.vehicleNo || '', unitPrice: x.unit_price || 0, supplyPrice: x.supply_price || 0, totalAmount: x.total_amount || 0, settlementStatus: x.settlement_status || 'PENDING', branchName: x.branch_name || '', clientUnitPrice: x.client_unit_price || 0, itemDescription: x.item_description || '', isInvoiceIssued: x.is_invoice_issued || false, invoicePhoto: x.invoice_photo || undefined, origin: x.origin || '', destination: x.destination || '', item: x.item || '', quantity: x.quantity || 0, remarks: x.remarks || '', type: x.type || 'SALES' })));
@@ -237,7 +177,6 @@ const App: React.FC = () => {
       if (u.data) setUnitPrices(u.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name, branchName: x.branch_name, unitPrice: x.unit_price, clientUnitPrice: x.client_unit_price })));
       if (s.data) setSnippets(s.data.map((x:any) => ({ ...x, id: x.id, clientName: x.client_name })));
       if (d.data) setDispatches(d.data.map((x:any) => ({ id: x.id, date: x.date, clientName: x.client_name || x.clientName || '', vehicleNo: x.vehicle_no || x.vehicleNo || '', origin: x.origin, destination: x.destination, item: x.item, count: x.count, remarks: x.remarks, status: x.status, type: x.type || 'SALES' })));
-
     } catch (error) { console.error("데이터 로딩 에러:", error); }
   };
 
@@ -251,13 +190,7 @@ const App: React.FC = () => {
     const sendLocation = () => {
       navigator.geolocation.getCurrentPosition(
         async ({ coords }) => {
-          await supabase.from('vehicle_locations').upsert({
-            vehicle_no: vehicleNo,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            speed: coords.speed ? Math.round(coords.speed * 3.6) : 0,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'vehicle_no' });
+          await supabase.from('vehicle_locations').upsert({ vehicle_no: vehicleNo, latitude: coords.latitude, longitude: coords.longitude, speed: coords.speed ? Math.round(coords.speed * 3.6) : 0, updated_at: new Date().toISOString() }, { onConflict: 'vehicle_no' });
         },
         (err) => console.warn('위치 오류:', err),
         { enableHighAccuracy: true, timeout: 10000 }
@@ -268,10 +201,7 @@ const App: React.FC = () => {
   };
 
   const stopLocationTracking = () => {
-    if (locationIntervalRef.current) {
-      clearInterval(locationIntervalRef.current);
-      locationIntervalRef.current = null;
-    }
+    if (locationIntervalRef.current) { clearInterval(locationIntervalRef.current); locationIntervalRef.current = null; }
   };
 
   const handleLogin = (loggedInUser: AuthUser) => {
@@ -281,23 +211,44 @@ const App: React.FC = () => {
     else if (loggedInUser.role === 'PARTNER') nextView = ViewType.OPERATION_ENTRY;
     setCurrentView(nextView);
     localStorage.setItem('veraka_user', JSON.stringify(loggedInUser));
-    if (loggedInUser.role === 'VEHICLE') {
-      startLocationTracking(loggedInUser.identifier);
-    }
+    if (loggedInUser.role === 'VEHICLE') startLocationTracking(loggedInUser.identifier);
   };
 
-  const handleLogout = () => {
-    stopLocationTracking();
-    setUser(null);
-    localStorage.removeItem('veraka_user');
+  const handleLogout = () => { stopLocationTracking(); setUser(null); localStorage.removeItem('veraka_user'); };
+
+  // ✅ invoice_photo 수정 - invoicePhoto || invoice_photo 둘 다 처리
+  const handleAddOperation = async (op: Operation) => { 
+    setOperations(prev => [op, ...prev]); 
+    await supabase.from('operations').insert({ 
+      id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, 
+      origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, 
+      quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, 
+      remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, 
+      client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, 
+      is_invoice_issued: op.isInvoiceIssued, 
+      invoice_photo: op.invoicePhoto || op.invoice_photo,  // ✅ 수정
+      type: op.type 
+    }); 
+  };
+
+  const handleUpdateOperation = async (op: Operation) => { 
+    setOperations(prev => prev.map(o => o.id === op.id ? op : o)); 
+    await supabase.from('operations').update({ 
+      date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, 
+      origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, 
+      unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, 
+      remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, 
+      client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, 
+      is_invoice_issued: op.isInvoiceIssued, 
+      invoice_photo: op.invoicePhoto || op.invoice_photo,  // ✅ 수정
+      type: op.type 
+    }).eq('id', op.id); 
   };
 
   const handleSaveVehicle = async (v: Vehicle) => { const dbData = { vehicle_no: v.vehicleNo, owner_name: v.ownerName, phone: v.phone, password: v.password, login_code: v.loginCode }; const { error } = v.id.length === 36 ? await supabase.from('vehicles').update(dbData).eq('id', v.id) : await supabase.from('vehicles').insert(dbData); if(error) alert("저장 실패: " + error.message); else fetchData(); };
   const handleDeleteVehicle = async (id: string) => { if(window.confirm("삭제?")) { await supabase.from('vehicles').delete().eq('id', id); fetchData(); }};
   const handleSaveClient = async (c: Client) => { const dbData = { client_name: c.clientName, president_name: c.presidentName, phone: c.phone, business_no: c.businessNo, branches: c.branches, address: c.address, fax: c.fax, business_type: c.businessType, category: c.category }; const { error } = c.id.length === 36 ? await supabase.from('clients').update(dbData).eq('id', c.id) : await supabase.from('clients').insert(dbData); if(error) alert("실패: "+error.message); else fetchData(); };
   const handleDeleteClient = async (id: string) => { if(confirm("삭제?")) { await supabase.from('clients').delete().eq('id', id); fetchData(); }};
-  const handleAddOperation = async (op: Operation) => { setOperations(prev => [op, ...prev]); await supabase.from('operations').insert({ id: op.id, date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, unit_price: op.unitPrice, quantity: op.quantity, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type }); };
-  const handleUpdateOperation = async (op: Operation) => { setOperations(prev => prev.map(o => o.id === op.id ? op : o)); await supabase.from('operations').update({ date: op.date, client_name: op.clientName, vehicle_no: op.vehicleNo, origin: op.origin, destination: op.destination, item: op.item, quantity: op.quantity, unit_price: op.unitPrice, supply_price: op.supplyPrice, tax: op.tax, total_amount: op.totalAmount, remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, is_invoice_issued: op.isInvoiceIssued, invoice_photo: op.invoice_photo, type: op.type }).eq('id', op.id); };
   const handleSaveUnitPrice = async (u: UnitPriceMaster) => { const dbData = { client_name: u.clientName, branch_name: u.branchName, origin: u.origin, destination: u.destination, item: u.item, unit_price: u.unitPrice, client_unit_price: u.clientUnitPrice }; if(u.id.length===36) await supabase.from('unit_prices').update(dbData).eq('id', u.id); else await supabase.from('unit_prices').insert(dbData); fetchData(); };
   const handleDeleteUnitPrice = async (id: string) => { if(confirm("삭제?")) { await supabase.from('unit_prices').delete().eq('id', id); fetchData(); }};
   const handleSaveSnippet = async (s: Snippet) => { const dbData = { title: s.title, content: s.content, keyword: s.keyword, origin: s.origin, destination: s.destination, item: s.item, client_name: s.clientName }; if(s.id.length===36) await supabase.from('snippets').update(dbData).eq('id', s.id); else await supabase.from('snippets').insert(dbData); fetchData(); };
@@ -306,22 +257,13 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (!user) return <LoginView onLogin={handleLogin} />;
-    
     const matchVehicle = (opVehicleNo: string, identifier: string) => {
       const clean1 = String(opVehicleNo || '').replace(/\s+/g, '');
       const clean2 = String(identifier || '').replace(/\s+/g, '');
       return clean1.includes(clean2) || clean2.includes(clean1);
     };
-
-    const filteredOps = user.role === 'PARTNER' 
-      ? operations.filter(op => op.clientName === user.identifier) 
-      : user.role === 'VEHICLE' 
-        ? operations.filter(op => matchVehicle(op.vehicleNo, user.identifier)) 
-        : operations;
-
-    const filteredDispatches = user.role === 'VEHICLE'
-      ? dispatches.filter(d => matchVehicle(d.vehicleNo, user.identifier))
-      : dispatches;
+    const filteredOps = user.role === 'PARTNER' ? operations.filter(op => op.clientName === user.identifier) : user.role === 'VEHICLE' ? operations.filter(op => matchVehicle(op.vehicleNo, user.identifier)) : operations;
+    const filteredDispatches = user.role === 'VEHICLE' ? dispatches.filter(d => matchVehicle(d.vehicleNo, user.identifier)) : dispatches;
 
     switch (currentView) {
       case ViewType.DASHBOARD: return <DashboardView operations={filteredOps} vehicles={vehicles} dispatches={filteredDispatches} onUpdateOperation={handleUpdateOperation} />;
@@ -336,8 +278,8 @@ const App: React.FC = () => {
                 fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
-                 setDispatches(prev => prev.map(old => old.id === d.id ? d : old));
-                 const dbData = { date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
+                setDispatches(prev => prev.map(old => old.id === d.id ? d : old));
+                const dbData = { date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').update(dbData).eq('id', d.id);
                 fetchData(); 
             }} 
