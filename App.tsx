@@ -216,7 +216,6 @@ const App: React.FC = () => {
 
   const handleLogout = () => { stopLocationTracking(); setUser(null); localStorage.removeItem('veraka_user'); };
 
-  // ✅ invoice_photo 수정 - invoicePhoto || invoice_photo 둘 다 처리
   const handleAddOperation = async (op: Operation) => { 
     setOperations(prev => [op, ...prev]); 
     await supabase.from('operations').insert({ 
@@ -226,7 +225,7 @@ const App: React.FC = () => {
       remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, 
       client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, 
       is_invoice_issued: op.isInvoiceIssued, 
-      invoice_photo: op.invoicePhoto || op.invoice_photo,  // ✅ 수정
+      invoice_photo: op.invoicePhoto || op.invoice_photo || null,
       type: op.type 
     }); 
   };
@@ -240,7 +239,7 @@ const App: React.FC = () => {
       remarks: op.remarks, settlement_status: op.settlementStatus, branch_name: op.branchName, 
       client_unit_price: op.clientUnitPrice, item_description: op.itemDescription, 
       is_invoice_issued: op.isInvoiceIssued, 
-      invoice_photo: op.invoicePhoto || op.invoice_photo,  // ✅ 수정
+      invoice_photo: op.invoicePhoto || op.invoice_photo || null,
       type: op.type 
     }).eq('id', op.id); 
   };
@@ -275,6 +274,32 @@ const App: React.FC = () => {
                 const dbData = { id: d.id, date: d.date, client_name: d.clientName, vehicle_no: d.vehicleNo, origin: d.origin, destination: d.destination, item: d.item, remarks: d.remarks, status: d.status, count: d.count, type: d.type };
                 await supabase.from('dispatches').insert(dbData);
                 await sendPushNotification(d.vehicleNo, '🔔 새 배차 알림', `${d.origin} ▶ ${d.destination} / ${d.item}`);
+
+                // ✅ 2번 수정: 배차 등록 시 운행목록 자동 추가 (항상 새로 insert)
+                const matchedPrice = unitPrices.find(up => up.clientName === d.clientName && up.origin === d.origin && up.destination === d.destination);
+                await supabase.from('operations').insert({
+                  id: d.id,
+                  date: d.date,
+                  client_name: d.clientName,
+                  vehicle_no: d.vehicleNo,
+                  origin: d.origin,
+                  destination: d.destination,
+                  item: d.item,
+                  unit_price: matchedPrice?.unitPrice || 0,
+                  quantity: 0,
+                  supply_price: 0,
+                  tax: 0,
+                  total_amount: 0,
+                  remarks: d.remarks || '',
+                  settlement_status: 'PENDING',
+                  branch_name: matchedPrice?.branchName || '',
+                  client_unit_price: matchedPrice?.clientUnitPrice || 0,
+                  item_description: d.item,
+                  is_invoice_issued: false,
+                  invoice_photo: null,
+                  type: d.type
+                });
+
                 fetchData(); 
             }} 
             onUpdateDispatch={async (d) => {
