@@ -13,24 +13,17 @@ const generateUUID = () => {
 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE';
 
-// ✅ NAS에 사진 업로드하는 함수
 const uploadToNAS = async (imageBase64: string, fileName: string): Promise<string | null> => {
   try {
     const res = await fetch('https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/upload-to-nas', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
       body: JSON.stringify({ imageBase64, fileName })
     });
     const data = await res.json();
     if (data.success) return data.nasUrl;
     return null;
-  } catch (err) {
-    console.warn('NAS 업로드 실패:', err);
-    return null;
-  }
+  } catch (err) { console.warn('NAS 업로드 실패:', err); return null; }
 };
 
 interface Props {
@@ -55,9 +48,7 @@ const DispatchManagementView: React.FC<Props> = ({
   user, dispatches, vehicles, clients, snippets, operations, unitPrices = [],
   onAddDispatch, onAddSnippet, onAddOperation, onUpdateDispatch, onDeleteDispatch, onUpdateStatus, onNavigate, onUpdateOperation
 }) => {
-  const [newDispatch, setNewDispatch] = useState({ 
-    vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' 
-  });
+  const [newDispatch, setNewDispatch] = useState({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
   const [dispatchType, setDispatchType] = useState<'SALES' | 'PURCHASE'>('SALES');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Dispatch | null>(null);
@@ -89,9 +80,7 @@ const DispatchManagementView: React.FC<Props> = ({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [user]);
 
-  const uniqueClientNames = useMemo(() => {
-    return Array.from(new Set(clients.map(c => c.clientName))).sort();
-  }, [clients]);
+  const uniqueClientNames = useMemo(() => Array.from(new Set(clients.map(c => c.clientName))).sort(), [clients]);
 
   const recentData = useMemo(() => {
     const getUniqueRecent = (key: 'origin' | 'destination' | 'item' | 'remarks') => {
@@ -100,26 +89,13 @@ const DispatchManagementView: React.FC<Props> = ({
       const combined = [...fromDispatches, ...fromOps].map(v => v.trim()).filter(v => v !== '' && v !== 'undefined' && v !== 'null');
       return Array.from(new Set(combined)).reverse().slice(0, 8);
     };
-    return { 
-      origin: getUniqueRecent('origin'), 
-      destination: getUniqueRecent('destination'), 
-      item: getUniqueRecent('item'), 
-      remarks: getUniqueRecent('remarks') 
-    };
+    return { origin: getUniqueRecent('origin'), destination: getUniqueRecent('destination'), item: getUniqueRecent('item'), remarks: getUniqueRecent('remarks') };
   }, [dispatches, operations]);
 
   const handleOriginChange = (val: string) => {
     setNewDispatch(prev => ({ ...prev, origin: val }));
     const match = snippets.find(s => s.keyword === val);
-    if (match) {
-      setNewDispatch(prev => ({
-        ...prev,
-        origin: match.origin || prev.origin,
-        destination: match.destination || prev.destination,
-        item: match.item || prev.item,
-        clientName: match.clientName || prev.clientName
-      }));
-    }
+    if (match) setNewDispatch(prev => ({ ...prev, origin: match.origin || prev.origin, destination: match.destination || prev.destination, item: match.item || prev.item, clientName: match.clientName || prev.clientName }));
   };
 
   const applySnippet = (s: Snippet) => {
@@ -134,21 +110,10 @@ const DispatchManagementView: React.FC<Props> = ({
   };
 
   const handleCreateDispatch = () => {
-    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) {
-      alert('차량, 상차지, 하차지는 필수 입력 사항입니다.');
-      return;
-    }
-    const d: Dispatch = { 
-      id: generateUUID(), date: new Date().toISOString().split('T')[0], 
-      vehicleNo: newDispatch.vehicleNo, clientName: newDispatch.clientName || '미지정', 
-      origin: newDispatch.origin, destination: newDispatch.destination, item: newDispatch.item, 
-      count: newDispatch.count, remarks: newDispatch.remarks, status: 'pending', type: dispatchType
-    };
+    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) { alert('차량, 상차지, 하차지는 필수 입력 사항입니다.'); return; }
+    const d: Dispatch = { id: generateUUID(), date: new Date().toISOString().split('T')[0], vehicleNo: newDispatch.vehicleNo, clientName: newDispatch.clientName || '미지정', origin: newDispatch.origin, destination: newDispatch.destination, item: newDispatch.item, count: newDispatch.count, remarks: newDispatch.remarks, status: 'pending', type: dispatchType };
     onAddDispatch(d);
-    const newSnippet: Snippet = {
-      id: generateUUID(), title: `${d.origin} ▶ ${d.destination}`, content: d.item || '자동생성',
-      keyword: d.origin, origin: d.origin, destination: d.destination, item: d.item, clientName: d.clientName
-    };
+    const newSnippet: Snippet = { id: generateUUID(), title: `${d.origin} ▶ ${d.destination}`, content: d.item || '자동생성', keyword: d.origin, origin: d.origin, destination: d.destination, item: d.item, clientName: d.clientName };
     onAddSnippet(newSnippet);
     setNewDispatch({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
     setActiveField(null);
@@ -157,31 +122,20 @@ const DispatchManagementView: React.FC<Props> = ({
 
   const startEditing = (d: Dispatch) => { setEditingId(d.id); setEditForm({ ...d }); };
   
-  const userDispatches = dispatches.filter(d => 
-    user.role === 'ADMIN' || 
-    String(d.vehicleNo).trim() === String(user.identifier).trim() || 
-    (user.role === 'PARTNER' && d.clientName === user.identifier)
-  );
+  const userDispatches = dispatches.filter(d => user.role === 'ADMIN' || String(d.vehicleNo).trim() === String(user.identifier).trim() || (user.role === 'PARTNER' && d.clientName === user.identifier));
 
   const renderChips = (field: keyof typeof recentData) => {
     const items = recentData[field];
-    const matchingSnippets = field === 'origin' 
-      ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) 
-      : [];
+    const matchingSnippets = field === 'origin' ? snippets.filter(s => (s.keyword && s.keyword.includes(newDispatch.origin)) || (s.origin && s.origin.includes(newDispatch.origin))) : [];
     if (activeField !== field) return null;
     if (items.length === 0 && matchingSnippets.length === 0) return null;
     return (
-      <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto"
-        onMouseDown={(e) => e.preventDefault()}>
+      <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto" onMouseDown={(e) => e.preventDefault()}>
         {field === 'origin' && matchingSnippets.map(s => (
-          <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">
-            ⭐ {s.keyword || s.title}
-          </button>
+          <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">⭐ {s.keyword || s.title}</button>
         ))}
         {items.map((item, idx) => (
-          <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100">
-            {item}
-          </button>
+          <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100">{item}</button>
         ))}
       </div>
     );
@@ -197,25 +151,14 @@ const DispatchManagementView: React.FC<Props> = ({
     }
   };
 
-  // ✅ NAS + Supabase 동시 업로드
   const uploadPhoto = async (photoBase64: string, dispatchId: string): Promise<string> => {
     const fileName = `invoice_${dispatchId}_${Date.now()}.jpg`;
-    
-    // 1. Supabase Storage 업로드
     const base64Data = photoBase64.split(',')[1];
     const byteArray = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     const { error } = await supabase.storage.from('invoices').upload(fileName, byteArray, { contentType: 'image/jpeg' });
-    
     let supabaseUrl = '';
-    if (!error) {
-      supabaseUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
-    }
-
-    // 2. NAS 동시 업로드 (백그라운드)
-    uploadToNAS(photoBase64, fileName).then(nasUrl => {
-      if (nasUrl) console.log('✅ NAS 업로드 완료:', nasUrl);
-    });
-
+    if (!error) supabaseUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
+    uploadToNAS(photoBase64, fileName).then(nasUrl => { if (nasUrl) console.log('✅ NAS 업로드 완료:', nasUrl); });
     return supabaseUrl;
   };
 
@@ -224,17 +167,23 @@ const DispatchManagementView: React.FC<Props> = ({
     if (!targetDispatch) return;
 
     let photoUrl = photoBase64;
-
-    // ✅ base64 이미지면 업로드 처리
     if (photoBase64 && photoBase64.startsWith('data:')) {
       photoUrl = await uploadPhoto(photoBase64, targetId);
     }
 
-    const existingOp = operations.find(o => o.vehicleNo === targetDispatch.vehicleNo && o.date === targetDispatch.date && o.origin === targetDispatch.origin && o.destination === targetDispatch.destination);
+    // ✅ dispatch ID로 먼저 찾고 없으면 조건으로 찾기
+    const existingOp = operations.find(o => o.id === targetId) ||
+      operations.find(o => 
+        o.vehicleNo === targetDispatch.vehicleNo && 
+        o.date === targetDispatch.date && 
+        o.origin === targetDispatch.origin && 
+        o.destination === targetDispatch.destination
+      );
+
     const matchedPrice = unitPrices?.find(up => up.clientName === targetDispatch.clientName && up.origin === targetDispatch.origin && up.destination === targetDispatch.destination && up.item === targetDispatch.item);
     
-    const unitPrice = matchedPrice ? matchedPrice.unitPrice : 0;
-    const clientUnitPrice = matchedPrice ? matchedPrice.clientUnitPrice : 0;
+    const unitPrice = matchedPrice ? matchedPrice.unitPrice : (existingOp?.unitPrice || 0);
+    const clientUnitPrice = matchedPrice ? matchedPrice.clientUnitPrice : (existingOp?.clientUnitPrice || 0);
     const supplyPrice = Math.floor(unitPrice * qty);
     const tax = Math.floor(supplyPrice * 0.1); 
     const totalAmount = supplyPrice + tax;
@@ -245,14 +194,17 @@ const DispatchManagementView: React.FC<Props> = ({
       origin: targetDispatch.origin, destination: targetDispatch.destination, item: targetDispatch.item, 
       quantity: qty, unitPrice, clientUnitPrice, supplyPrice, tax, totalAmount, 
       remarks: targetDispatch.remarks || '', 
-      invoicePhoto: photoUrl || (existingOp ? existingOp.invoicePhoto : undefined), 
+      invoicePhoto: photoUrl || (existingOp ? existingOp.invoicePhoto : undefined),
       isInvoiceIssued: existingOp ? existingOp.isInvoiceIssued : false, 
       settlementStatus: existingOp ? existingOp.settlementStatus : 'PENDING', 
-      itemDescription: targetDispatch.item, branchName: matchedPrice?.branchName || '', itemCode: '', isVatIncluded: false,
+      itemDescription: targetDispatch.item, 
+      branchName: matchedPrice?.branchName || (existingOp?.branchName || ''), 
+      itemCode: '', isVatIncluded: false,
       type: targetDispatch.type
     };
 
-    if (existingOp && onUpdateOperation) await onUpdateOperation(opData); else await onAddOperation(opData); 
+    if (existingOp && onUpdateOperation) await onUpdateOperation(opData); 
+    else await onAddOperation(opData); 
     await onUpdateStatus(targetId, 'completed', photoUrl, qty);
   };
 
@@ -262,10 +214,8 @@ const DispatchManagementView: React.FC<Props> = ({
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
-        try {
-          await handleFinalSubmitInternal(dispatchId, base64, 0);
-          alert('송장이 등록되었습니다.');
-        } catch (err) { alert('사진 업로드 실패'); }
+        try { await handleFinalSubmitInternal(dispatchId, base64, 0); alert('송장이 등록되었습니다.'); } 
+        catch (err) { alert('사진 업로드 실패'); }
       };
       reader.readAsDataURL(file);
     }
@@ -281,27 +231,22 @@ const DispatchManagementView: React.FC<Props> = ({
     } catch (error) {
       console.error("배차 처리 중 오류 발생:", error);
       alert("처리 중 오류가 발생했습니다.");
-    } finally {
-      setIsProcessingAI(false);
-    }
+    } finally { setIsProcessingAI(false); }
   };
 
   return (
     <div ref={scrollContainerRef} className="h-full overflow-y-auto custom-scrollbar p-4 space-y-4 flex flex-col">
-      <input 
-        type="file" ref={fileInputRef} 
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => { 
-              setCapturedPhoto(reader.result as string); setCameraOpen(true); setIsCameraMode(false); 
-              if (activeDispatchId && cardQuantities[activeDispatchId]) setModalQuantity(cardQuantities[activeDispatchId]);
-            };
-            reader.readAsDataURL(file);
-          }
-        }} accept="image/*" className="hidden" 
-      />
+      <input type="file" ref={fileInputRef} onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => { 
+            setCapturedPhoto(reader.result as string); setCameraOpen(true); setIsCameraMode(false); 
+            if (activeDispatchId && cardQuantities[activeDispatchId]) setModalQuantity(cardQuantities[activeDispatchId]);
+          };
+          reader.readAsDataURL(file);
+        }
+      }} accept="image/*" className="hidden" />
 
       <div className="flex justify-between items-center shrink-0">
         <div><h2 className="text-xl font-black text-slate-800 dark:text-slate-100">배차 관리</h2></div>
@@ -362,9 +307,7 @@ const DispatchManagementView: React.FC<Props> = ({
                 return (
                   <tr key={d.id} className={`hover:bg-slate-50 ${d.status === 'completed' ? 'bg-green-50/30' : ''}`}>
                     <td className="px-3 py-2 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${d.type === 'PURCHASE' ? 'bg-green-500' : 'bg-blue-500'}`}>
-                            {d.type === 'PURCHASE' ? '매입' : '매출'}
-                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${d.type === 'PURCHASE' ? 'bg-green-500' : 'bg-blue-500'}`}>{d.type === 'PURCHASE' ? '매입' : '매출'}</span>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.status==='completed'?'bg-green-50 text-green-600 border-green-200':d.status==='sent'?'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-500 border-slate-200'}`}>
@@ -382,11 +325,7 @@ const DispatchManagementView: React.FC<Props> = ({
                         </div>
                       ) : (`${d.origin} → ${d.destination}`)}
                     </td>
-                    <td className="px-3 py-2">
-                      {isEditing ? (
-                        <input value={editForm?.item} onChange={e=>setEditForm(p=>p?({...p,item:e.target.value}):null)} className="border rounded w-20 px-1" />
-                      ) : (d.item)}
-                    </td>
+                    <td className="px-3 py-2">{isEditing ? (<input value={editForm?.item} onChange={e=>setEditForm(p=>p?({...p,item:e.target.value}):null)} className="border rounded w-20 px-1" />) : (d.item)}</td>
                     <td className="px-3 py-2 text-center">{d.count}</td>
                     <td className="px-3 py-2 truncate max-w-[100px]" title={d.remarks}>{d.remarks}</td>
                     <td className="px-3 py-2 text-center flex justify-center gap-1 items-center">
@@ -457,11 +396,7 @@ const DispatchManagementView: React.FC<Props> = ({
                </div>
            ) : (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
-                   {capturedPhoto ? (
-                       <img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />
-                   ) : (
-                       <div className="text-white text-center p-4"><p className="text-lg font-bold mb-2">사진 없음</p><p className="text-sm text-gray-400">수량만 수정하거나 사진을 추가하세요.</p></div>
-                   )}
+                   {capturedPhoto ? (<img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />) : (<div className="text-white text-center p-4"><p className="text-lg font-bold mb-2">사진 없음</p><p className="text-sm text-gray-400">수량만 수정하거나 사진을 추가하세요.</p></div>)}
                    {capturedPhoto && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => setRotation(r => r + 90)} className="w-10 h-10 bg-black/50 text-white rounded-full">↻</button><button onClick={() => setZoomScale(z => z === 1 ? 2 : 1)} className="w-10 h-10 bg-black/50 text-white rounded-full">🔍</button></div>}
                </div>
            )}
