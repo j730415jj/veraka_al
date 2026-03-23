@@ -24,7 +24,7 @@ import ClientTransactionStatement from './components/ClientTransactionStatement'
 import SettingsView from './components/SettingsView';
 
 const SUPABASE_FUNCTION_URL = 'https://yglnvedpjtxtzjprkhjp.supabase.co/functions/v1/send-push-notification';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwNjM1NDcsImV4cCI6MjA1MzYzOTU0N30.yCVDdBmeCGBnKx2ITNF0KWXQ3GH6ZxDyRKoVPGu9FcE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnbG52ZWRwanR4dHpqcHJraGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NDEwMDIsImV4cCI6MjA4NDExNzAwMn0.EjbYEn5Mgo3fTHC_j3hGGsxpCQIBoTb-cBOjEWS3rC8';
 
 const sendPushNotification = async (vehicleNo: string, title: string, body: string) => {
   try {
