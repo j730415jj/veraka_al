@@ -1,0 +1,32 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "supabase",
+    "SUPABASE",
+    "veraka",
+    "veraka-al",
+    "BERAKAH",
+    "FCM",
+    "NAS",
+    "firebase",
+    "vite",
+    "tsx",
+    "AuthUser",
+    "unitPrices",
+    "DispatchManagementView",
+    "OperationEntryView",
+    "xlsx",
+    "exceljs",
+    "html2canvas",
+    "react-dom",
+    "lucide-react"
+    ,"XVCJ","MGMT","yxxx"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    ".git",
+    "dist",
+    "build"
+  ]
+}

@@ -38,31 +38,11 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  const handleLogin = (identifier: string, password?: string, type?: 'VEHICLE' | 'PARTNER' | 'ADMIN') => {
-    if (type === 'ADMIN') {
-      const admin = adminAccounts.find(a => a.username === identifier && a.password === password);
-      if (admin) {
-        setUser({ id: admin.id, role: 'ADMIN', name: admin.name, identifier: admin.username });
-        setCurrentView(ViewType.DASHBOARD);
-        return true;
-      }
-    } else if (type === 'PARTNER') {
-      const partner = partnerAccounts.find(p => p.username === identifier && p.password === password);
-      if (partner) {
-        setUser({ id: partner.id, role: 'PARTNER', name: partner.name, identifier: partner.clientName });
-        // 협력업체는 로그인 시 즉시 운행 내역(스프레드시트 뷰) 화면으로 이동
-        setCurrentView(ViewType.OPERATION_ENTRY);
-        return true;
-      }
-    } else {
-      const vehicle = vehicles.find(v => v.loginCode === identifier && v.password === (password || identifier));
-      if (vehicle) {
-        setUser({ id: vehicle.id, role: 'VEHICLE', name: vehicle.ownerName, identifier: vehicle.vehicleNo });
-        setCurrentView(ViewType.DISPATCH_MGMT);
-        return true;
-      }
-    }
-    return false;
+  const handleLogin = (loggedInUser: AuthUser) => {
+    setUser(loggedInUser);
+    if (loggedInUser.role === 'VEHICLE') setCurrentView(ViewType.DISPATCH_MGMT);
+    else if (loggedInUser.role === 'PARTNER') setCurrentView(ViewType.OPERATION_ENTRY);
+    else setCurrentView(ViewType.DASHBOARD);
   };
 
   const handleLogout = () => setUser(null);
@@ -138,7 +118,10 @@ const App: React.FC = () => {
             clients={clients} 
             snippets={snippets} 
             operations={operations} 
+            unitPrices={unitPrices}
             onAddDispatch={d => setDispatches(prev => [d, ...prev])} 
+            onAddSnippet={s => setSnippets(prev => [...prev, s])}
+            onAddOperation={op => setOperations(prev => [op, ...prev])}
             onUpdateDispatch={d => setDispatches(prev => prev.map(x => x.id === d.id ? d : x))} 
             onDeleteDispatch={id => setDispatches(prev => prev.filter(d => d.id !== id))} 
             onUpdateStatus={handleUpdateDispatchStatus} 
@@ -164,16 +147,16 @@ const App: React.FC = () => {
         return <ClientSummaryView operations={filteredOps} />;
 
       case ViewType.VEHICLE_REPORT:
-        return <StatementView title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <StatementView title="차량거래 내역서" type="vehicle" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
       case ViewType.COMPANY_REPORT:
-        return <StatementView title="상호별 내역서" type="company" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <StatementView title="상호별 내역서" type="company" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
       case ViewType.CLIENT_REPORT:
-        return <StatementView title="거래처 내역서" type="client" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <StatementView title="거래처 내역서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
       case ViewType.TAX_INVOICE:
-        return <StatementView title="세금 계산서" type="client" operations={filteredOps} clients={clients} userRole={user.role} userIdentifier={user.identifier} />;
+        return <StatementView title="세금 계산서" type="client" operations={filteredOps} clients={clients} vehicles={vehicles} userRole={user.role} userIdentifier={user.identifier} />;
 
       case ViewType.VEHICLE_TRACKING:
         return <VehicleTrackingView vehicles={vehicles} />;

@@ -99,7 +99,7 @@ const MasterSnippetView: React.FC<Props> = ({ snippets, clients, onSave, onDelet
               <label className="text-[10px] font-black text-gray-400 uppercase">거래처 연동</label>
               <select name="clientName" value={formData.clientName} onChange={handleInputChange} disabled={!isEditing && !!selectedId} className="w-full border rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 font-bold">
                 <option value="">거래처 선택 (선택사항)</option>
-                {clients.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.clientName}>{c.clientName}</option>)}
               </select>
             </div>
             <div className="space-y-1">
