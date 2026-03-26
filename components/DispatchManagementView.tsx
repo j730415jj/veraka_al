@@ -23,7 +23,7 @@ const uploadToNAS = async (imageBase64: string, fileName: string): Promise<strin
     const data = await res.json();
     if (data.success) return data.nasUrl;
     return null;
-  } catch (err) { console.warn('NAS 筌��닀�궧占쎌굷筌��꼷彛좑옙�긿筌��꼹�궙占쎌긿 筌��닀�궆筌욎떝肄э옙�궋筌욑옙:', err); return null; }
+  } catch (err) { console.warn('NAS 업로드 실패:', err); return null; }
 };
 
 interface Props {
@@ -74,7 +74,7 @@ const DispatchManagementView: React.FC<Props> = ({
         const { latitude, longitude } = position.coords;
         await supabase.from('vehicles').update({ lat: latitude, lng: longitude }).eq('id', user.id);
       },
-      (error) => console.error("GPS 筌��닀�궧占쎌궔筌��꼹�깑筌욑옙:", error),
+      (error) => console.error("GPS 에러:", error),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
     );
     return () => navigator.geolocation.clearWatch(watchId);
@@ -110,10 +110,10 @@ const DispatchManagementView: React.FC<Props> = ({
   };
 
   const handleCreateDispatch = () => {
-    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) { alert('筌��늿�럮筌욑옙筌��꼹�깑占쎌궃, 筌��닀�굯占쎌굩筌��늿�럮筌욑옙筌��늿彛у뜝�룞�삕, 筌�醫륁궥占쎌궨筌��늿�럮筌욑옙筌��늿彛у뜝�룞�삕筌��꼹�궅占쎌궞 筌�醫륁궥占쎌굲筌��닀�궀占쎌궨 筌��닀�깇占쎌굷筌��꼹�깓筌욑옙 筌��닀�굮筌욑옙筌�醫륁궥筌욑옙筌��닀�깇占쎌굷筌��꼹�궆占쎌궀筌��꼹�궆筌욑옙.'); return; }
-    const d: Dispatch = { id: generateUUID(), date: new Date().toISOString().split('T')[0], vehicleNo: newDispatch.vehicleNo, clientName: newDispatch.clientName || '筌��꼷�렅鸚룸씮肄∽쭪醫묒삕�뜝�럩肄∽옙�깓占쎌궥', origin: newDispatch.origin, destination: newDispatch.destination, item: newDispatch.item, count: newDispatch.count, remarks: newDispatch.remarks, status: 'pending', type: dispatchType };
+    if (!newDispatch.vehicleNo || !newDispatch.origin || !newDispatch.destination) { alert('차량, 상차지, 하차지는 필수 입력 사항입니다.'); return; }
+    const d: Dispatch = { id: generateUUID(), date: new Date().toISOString().split('T')[0], vehicleNo: newDispatch.vehicleNo, clientName: newDispatch.clientName || '미지정', origin: newDispatch.origin, destination: newDispatch.destination, item: newDispatch.item, count: newDispatch.count, remarks: newDispatch.remarks, status: 'pending', type: dispatchType };
     onAddDispatch(d);
-    const newSnippet: Snippet = { id: generateUUID(), title: `${d.origin} 筌≪���궦鸚뤄옙 ${d.destination}`, content: d.item || '筌��닀�깇占쎌궔筌��꼹�궓占쎌궩筌��닀�굯占쎌깂筌��닀�굲筌욑옙', keyword: d.origin, origin: d.origin, destination: d.destination, item: d.item, clientName: d.clientName };
+    const newSnippet: Snippet = { id: generateUUID(), title: `${d.origin} ▶ ${d.destination}`, content: d.item || '자동생성', keyword: d.origin, origin: d.origin, destination: d.destination, item: d.item, clientName: d.clientName };
     onAddSnippet(newSnippet);
     setNewDispatch({ vehicleNo: '', clientName: '', origin: '', destination: '', item: '', count: 1, remarks: '' });
     setActiveField(null);
@@ -132,7 +132,7 @@ const DispatchManagementView: React.FC<Props> = ({
     return (
       <div className="absolute top-full left-0 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-2 mt-1 flex flex-col gap-1 w-full max-h-60 overflow-y-auto" onMouseDown={(e) => e.preventDefault()}>
         {field === 'origin' && matchingSnippets.map(s => (
-          <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">筌≪럩�렃占쎌궔 {s.keyword || s.title}</button>
+          <button key={`snip-${s.id}`} onMouseDown={(e) => { e.preventDefault(); applySnippet(s); }} className="text-left bg-blue-50 text-blue-700 px-3 py-2 rounded text-xs font-bold hover:bg-blue-100 border border-blue-100">⭐ {s.keyword || s.title}</button>
         ))}
         {items.map((item, idx) => (
           <button key={`${String(field)}-${idx}`} onMouseDown={(e) => { e.preventDefault(); selectSuggestion(String(field), item); }} className="text-left bg-slate-50 text-slate-700 px-3 py-2 rounded text-xs font-medium hover:bg-slate-100 border border-slate-100">{item}</button>
@@ -158,20 +158,20 @@ const DispatchManagementView: React.FC<Props> = ({
     const { error } = await supabase.storage.from('invoices').upload(fileName, byteArray, { contentType: 'image/jpeg' });
     let supabaseUrl = '';
     if (!error) supabaseUrl = supabase.storage.from('invoices').getPublicUrl(fileName).data.publicUrl;
-    uploadToNAS(photoBase64, fileName).then(nasUrl => { if (nasUrl) console.log('筌≪���긿占쎌굷 NAS 筌��닀�궧占쎌굷筌��꼷彛좑옙�긿筌��꼹�궙占쎌긿 筌��닀�궩占쎌굲筌��꼷彛ο옙�궋:', nasUrl); });
+    uploadToNAS(photoBase64, fileName).then(nasUrl => { if (nasUrl) console.log('✅ NAS 업로드 완료:', nasUrl); });
     return supabaseUrl;
   };
 
   const handleFinalSubmitInternal = async (targetId: string, photoBase64: string | undefined, qty: number) => {
     const targetDispatch = dispatches.find(d => d.id === targetId);
-    if (!targetDispatch) throw new Error('�뛾�룄��ｅ첎占� �뜝�럩�젧�솻洹ｏ옙占썲뜝�룞�삕 嶺뚢돦堉싷옙諭� �뜝�럥�빢 �뜝�럥�뵪�뜝�럥裕멨뜝�럥鍮띶뜝�럥堉�.');
+    if (!targetDispatch) throw new Error('배차 정보를 찾을 수 없습니다.');
 
     let photoUrl = photoBase64;
     if (photoBase64 && photoBase64.startsWith('data:')) {
       photoUrl = await uploadPhoto(photoBase64, targetId);
     }
 
-    // 筌≪���긿占쎌굷 dispatch ID筌��꼷彛좑옙�긿 筌��꼷�럷冶⑤슣肄∽옙�깓�뜝�룞�삕 筌��늿�럮冶⑤Ŋ肄잌ㅇ占쏙옙�깓 筌��닀�궧占쎌굸筌��닀�긿冶⑤슣肄좑쭪�끉怡� 筌��늿彛좑쭪紐꾩퐶筌욌��怡ワ㎖�닀�긿冶⑤슣肄좑쭪類μ긿 筌��늿�럮冶⑤Ŋ肄잌ㅇ�씮�럮
+    // ✅ dispatch ID로 먼저 찾고 없으면 조건으로 찾기
     const existingOp = operations.find(o => o.id === targetId) ||
       operations.find(o => 
         o.vehicleNo === targetDispatch.vehicleNo && 
@@ -214,8 +214,8 @@ const DispatchManagementView: React.FC<Props> = ({
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
-        try { await handleFinalSubmitInternal(dispatchId, base64, 0); alert('筌��닀�굸筌욌벡肄∽옙�깇筌욎뮇肄∽옙�깂鸚뤄옙 筌��꼹�궙筌욌��肄좑쭪類μ깂筌��꼹�궔占쎌궨筌��닀�궧占쎌궀筌��닀�궅鸚룸맩肄좑옙�궆占쎌궀筌��꼹�궆筌욑옙.'); } 
-        catch (err) { alert('筌��닀�굮筌욑옙筌��늿彛э옙�굲 筌��닀�궧占쎌굷筌��꼷彛좑옙�긿筌��꼹�궙占쎌긿 筌��닀�궆筌욎떝肄э옙�궋筌욑옙'); }
+        try { await handleFinalSubmitInternal(dispatchId, base64, 0); alert('송장이 등록되었습니다.'); } 
+        catch (err) { alert('사진 업로드 실패'); }
       };
       reader.readAsDataURL(file);
     }
@@ -230,8 +230,8 @@ const DispatchManagementView: React.FC<Props> = ({
       await handleFinalSubmitInternal(targetId, capturedPhoto || undefined, quantity);
       closeCameraModal();
     } catch (error) {
-      console.error("筌��꼷�럮筌욌챷肄∽쭪紐꾠럷 筌��늿�룉占쎌궨筌��꼷彛⑼쭪占� 筌��늿彛�占쎌궕 筌��닀�궨筌욎떝肄좑쭪�뮉�궨 筌��꼷�럮占쎌긿筌��닀�굯占쎌깂:", error);
-      alert("筌��늿�룉占쎌궨筌��꼷彛⑼쭪占� 筌��늿彛�占쎌궕 筌��닀�궨筌욎떝肄좑쭪�뮉�궨筌���с럮�뜝�룞�삕 筌��꼷�럮占쎌긿筌��닀�굯占쎌깂筌�醫륁궦占쎌궀筌��닀�궅鸚룸맩肄좑옙�궆占쎌궀筌��꼹�궆筌욑옙.");
+      console.error("배차 처리 중 오류 발생:", error);
+      alert("처리 중 오류가 발생했습니다.");
     } finally { setIsProcessingAI(false); }
   };
 
@@ -250,9 +250,9 @@ const DispatchManagementView: React.FC<Props> = ({
       }} accept="image/*" className="hidden" />
 
       <div className="flex justify-between items-center shrink-0">
-        <div><h2 className="text-xl font-black text-slate-800 dark:text-slate-100">筌��꼷�럮筌욌챷肄∽쭪紐꾠럷 筌���ъ�ュ뜝�룞�삕筌��꼷彛⑼쭪占�</h2></div>
+        <div><h2 className="text-xl font-black text-slate-800 dark:text-slate-100">배차 관리</h2></div>
         {(user.role === 'VEHICLE' || user.role === 'PARTNER') && onNavigate && (
-          <button onClick={() => onNavigate(ViewType.DASHBOARD)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-600 active:scale-95 transition shadow-sm"><span>筌™뫂�깑占쎌궓占쎌깓 筌�醫륁궩占쎌궀筌��닀�긿冶⑤슣肄좑쭪類μ긿</span></button>
+          <button onClick={() => onNavigate(ViewType.DASHBOARD)} className="flex items-center gap-1 bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-600 active:scale-95 transition shadow-sm"><span>🏠 홈으로</span></button>
         )}
       </div>
 
@@ -261,26 +261,26 @@ const DispatchManagementView: React.FC<Props> = ({
           <div className="flex items-center gap-4 mb-3 pb-2 border-b border-gray-100">
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" name="dType" checked={dispatchType === 'SALES'} onChange={() => setDispatchType('SALES')} className="w-4 h-4 text-blue-600"/>
-                <span className={`text-xs font-bold ${dispatchType==='SALES'?'text-blue-600':'text-gray-500'}`}>筌��꼷彛э쭪�떝肄▼ㅇ�뿮�긿 (筌��늿�룉筌욑옙筌���ъ�э쭪占�)</span>
+                <span className={`text-xs font-bold ${dispatchType==='SALES'?'text-blue-600':'text-gray-500'}`}>매출 (청구)</span>
               </label>
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" name="dType" checked={dispatchType === 'PURCHASE'} onChange={() => setDispatchType('PURCHASE')} className="w-4 h-4 text-green-600"/>
-                <span className={`text-xs font-bold ${dispatchType==='PURCHASE'?'text-green-600':'text-gray-500'}`}>筌��꼷彛э쭪�떝肄∽옙�깇占쎌굷 (筌��늿彛у뜝�룞�삕筌���ъ�곤옙�궃)</span>
+                <span className={`text-xs font-bold ${dispatchType==='PURCHASE'?'text-green-600':'text-gray-500'}`}>매입 (지급)</span>
               </label>
           </div>
           <div className="flex flex-col lg:flex-row gap-2 items-end">
             <div className="flex-1 grid grid-cols-2 lg:grid-cols-7 gap-2 w-full relative">
-                <input list="vehicleOptions" placeholder="筌��늿�럮筌욑옙筌��꼹�깑占쎌궃(筌��닀�궀占쎌궨筌��꼹�궓占쎌궩)" value={newDispatch.vehicleNo} onChange={e => setNewDispatch(p => ({ ...p, vehicleNo: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 bg-slate-50"/>
+                <input list="vehicleOptions" placeholder="차량(수동)" value={newDispatch.vehicleNo} onChange={e => setNewDispatch(p => ({ ...p, vehicleNo: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 bg-slate-50"/>
                 <datalist id="vehicleOptions">{vehicles.map(v => <option key={v.id} value={v.vehicleNo}>{v.vehicleNo}</option>)}</datalist>
-                <input list="clientOptions" placeholder="筌���с룒筌욌챷肄좑옙�깇占쎌궨筌��늿�룉占쎌궨(筌��닀�궀占쎌궨筌��꼹�궓占쎌궩)" value={newDispatch.clientName} onChange={e => setNewDispatch(p => ({ ...p, clientName: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 text-blue-600 bg-slate-50"/>
+                <input list="clientOptions" placeholder="거래처(수동)" value={newDispatch.clientName} onChange={e => setNewDispatch(p => ({ ...p, clientName: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs font-bold h-9 text-blue-600 bg-slate-50"/>
                 <datalist id="clientOptions">{uniqueClientNames.map(n => <option key={n} value={n} />)}</datalist>
-                <div className="col-span-1 relative"><input placeholder="筌��닀�굯占쎌굩筌��늿�럮筌욑옙" value={newDispatch.origin} onChange={e => handleOriginChange(e.target.value)} onFocus={() => setActiveField('origin')} onMouseDown={() => setActiveField('origin')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('origin')}</div>
-                <div className="col-span-1 relative"><input placeholder="筌�醫륁궥占쎌궨筌��늿�럮筌욑옙" value={newDispatch.destination} onChange={e => setNewDispatch(p => ({ ...p, destination: e.target.value }))} onFocus={() => setActiveField('destination')} onMouseDown={() => setActiveField('destination')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('destination')}</div>
-                <div className="col-span-1 relative"><input placeholder="筌�醫륁궖占쎌궀筌��꼷�렍占쎌굷" value={newDispatch.item} onChange={e => setNewDispatch(p => ({ ...p, item: e.target.value }))} onFocus={() => setActiveField('item')} onMouseDown={() => setActiveField('item')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('item')}</div>
-                <input type="number" placeholder="筌�醫륁궬占쎌궋筌��닀�깓占쎌굲" value={newDispatch.count} onChange={e => setNewDispatch(p => ({ ...p, count: parseInt(e.target.value)||0 }))} className="col-span-1 border rounded px-2 py-1.5 text-xs h-9 text-center" />
-                <input placeholder="筌��꼷怡뤄옙�굲筌���э옙占쏙옙�깓" value={newDispatch.remarks} onChange={e => setNewDispatch(p => ({ ...p, remarks: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs h-9" />
+                <div className="col-span-1 relative"><input placeholder="상차" value={newDispatch.origin} onChange={e => handleOriginChange(e.target.value)} onFocus={() => setActiveField('origin')} onMouseDown={() => setActiveField('origin')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('origin')}</div>
+                <div className="col-span-1 relative"><input placeholder="하차" value={newDispatch.destination} onChange={e => setNewDispatch(p => ({ ...p, destination: e.target.value }))} onFocus={() => setActiveField('destination')} onMouseDown={() => setActiveField('destination')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('destination')}</div>
+                <div className="col-span-1 relative"><input placeholder="품명" value={newDispatch.item} onChange={e => setNewDispatch(p => ({ ...p, item: e.target.value }))} onFocus={() => setActiveField('item')} onMouseDown={() => setActiveField('item')} className="w-full border rounded px-2 py-1.5 text-xs h-9" />{renderChips('item')}</div>
+                <input type="number" placeholder="회전" value={newDispatch.count} onChange={e => setNewDispatch(p => ({ ...p, count: parseInt(e.target.value)||0 }))} className="col-span-1 border rounded px-2 py-1.5 text-xs h-9 text-center" />
+                <input placeholder="비고" value={newDispatch.remarks} onChange={e => setNewDispatch(p => ({ ...p, remarks: e.target.value }))} className="col-span-1 border rounded px-2 py-1.5 text-xs h-9" />
             </div>
-            <button onClick={handleCreateDispatch} className={`w-full lg:w-auto text-white px-4 py-1.5 rounded font-bold text-xs h-9 shadow shrink-0 ${dispatchType==='SALES'?'bg-blue-600':'bg-green-600'}`}>筌��꼹�궙筌욌��肄좑쭪類μ깂</button>
+            <button onClick={handleCreateDispatch} className={`w-full lg:w-auto text-white px-4 py-1.5 rounded font-bold text-xs h-9 shadow shrink-0 ${dispatchType==='SALES'?'bg-blue-600':'bg-green-600'}`}>등록</button>
           </div>
         </div>
       )}
@@ -290,16 +290,16 @@ const DispatchManagementView: React.FC<Props> = ({
           <table className="w-full min-w-[900px] text-xs text-left text-slate-600 dark:text-slate-300">
             <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 font-bold uppercase border-b sticky top-0">
               <tr>
-                <th className="px-3 py-2 w-14 text-center">筌���ъ�э쭪占쏙㎖�꼷怡�占쎌굲</th>
-                <th className="px-3 py-2 w-16 text-center">筌��닀�굯占쎌굩筌�醫륁굯占쎌긿</th>
-                <th className="px-3 py-2 w-24">筌��꼹�굮占쎌깓筌��늿彛э옙�긿</th>
-                <th className="px-3 py-2 w-28">筌��늿�럮筌욑옙筌��꼹�깑占쎌궃</th>
-                <th className="px-3 py-2 w-32">筌���с룒筌욌챷肄좑옙�깇占쎌궨筌��늿�룉占쎌궨</th>
-                <th className="px-3 py-2">筌���ъ�э쭪占쏙㎖��с럮占쎌굲</th>
-                <th className="px-3 py-2 w-24">筌�醫륁궖占쎌궀筌��꼷�렍占쎌굷</th>
-                <th className="px-3 py-2 w-14 text-center">筌�醫륁궬占쎌궋筌��닀�깓占쎌굲</th>
-                <th className="px-3 py-2 w-32">筌��꼷怡뤄옙�굲筌���э옙占쏙옙�깓</th>
-                <th className="px-3 py-2 w-36 text-center">筌���ъ�ュ뜝�룞�삕筌��꼷彛⑼쭪占�</th>
+                <th className="px-3 py-2 w-14 text-center">구분</th>
+                <th className="px-3 py-2 w-16 text-center">상태</th>
+                <th className="px-3 py-2 w-24">날짜</th>
+                <th className="px-3 py-2 w-28">차량</th>
+                <th className="px-3 py-2 w-32">거래처</th>
+                <th className="px-3 py-2">구간</th>
+                <th className="px-3 py-2 w-24">품명</th>
+                <th className="px-3 py-2 w-14 text-center">회전</th>
+                <th className="px-3 py-2 w-32">비고</th>
+                <th className="px-3 py-2 w-36 text-center">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -308,11 +308,11 @@ const DispatchManagementView: React.FC<Props> = ({
                 return (
                   <tr key={d.id} className={`hover:bg-slate-50 ${d.status === 'completed' ? 'bg-green-50/30' : ''}`}>
                     <td className="px-3 py-2 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${d.type === 'PURCHASE' ? 'bg-green-500' : 'bg-blue-500'}`}>{d.type === 'PURCHASE' ? '筌��꼷彛э쭪�떝肄∽옙�깇占쎌굷' : '筌��꼷彛э쭪�떝肄▼ㅇ�뿮�긿'}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-white ${d.type === 'PURCHASE' ? 'bg-green-500' : 'bg-blue-500'}`}>{d.type === 'PURCHASE' ? '매입' : '매출'}</span>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.status==='completed'?'bg-green-50 text-green-600 border-green-200':d.status==='sent'?'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                        {d.status==='pending'?'筌��꼹�궋�뜝�룞�삕筌���ъ�곤쭪占�':d.status==='sent'?'筌��꼷�럮筌욌챷肄∽쭪紐꾠럷筌��늿彛�占쎌궕':'筌��닀�궩占쎌굲筌��꼷彛ο옙�궋'}
+                        {d.status==='pending'?'대기':d.status==='sent'?'배차중':'완료'}
                       </span>
                     </td>
                     <td className="px-3 py-2">{d.date.substring(5)}</td>
@@ -324,25 +324,25 @@ const DispatchManagementView: React.FC<Props> = ({
                           <input value={editForm?.origin} onChange={e=>setEditForm(p=>p?({...p,origin:e.target.value}):null)} className="border rounded w-20 px-1" />
                           <input value={editForm?.destination} onChange={e=>setEditForm(p=>p?({...p,destination:e.target.value}):null)} className="border rounded w-20 px-1" />
                         </div>
-                      ) : (`${d.origin} 筌≪���굸占쎌궖 ${d.destination}`)}
+                      ) : (`${d.origin} → ${d.destination}`)}
                     </td>
                     <td className="px-3 py-2">{isEditing ? (<input value={editForm?.item} onChange={e=>setEditForm(p=>p?({...p,item:e.target.value}):null)} className="border rounded w-20 px-1" />) : (d.item)}</td>
                     <td className="px-3 py-2 text-center">{d.count}</td>
                     <td className="px-3 py-2 truncate max-w-[100px]" title={d.remarks}>{d.remarks}</td>
                     <td className="px-3 py-2 text-center flex justify-center gap-1 items-center">
                       {isEditing ? (
-                        <button onClick={()=>{if(editForm){onUpdateDispatch(editForm);setEditingId(null);}}} className="bg-blue-500 text-white px-2 py-1 rounded">筌��닀�깓�뜝�룞�삕筌��닀�깇筌욑옙</button>
+                        <button onClick={()=>{if(editForm){onUpdateDispatch(editForm);setEditingId(null);}}} className="bg-blue-500 text-white px-2 py-1 rounded">저장</button>
                       ) : (
                         <>
-                          {d.status==='pending'&&<button onClick={()=>onUpdateStatus(d.id,'sent')} className="bg-blue-600 text-white px-2 py-1 rounded">筌��닀�깓占쎌굲筌��닀�굸筌욑옙</button>}
+                          {d.status==='pending'&&<button onClick={()=>onUpdateStatus(d.id,'sent')} className="bg-blue-600 text-white px-2 py-1 rounded">전송</button>}
                           {d.status !== 'completed' && (
-                             <label className="text-gray-500 hover:text-blue-600 cursor-pointer p-1" title="筌��닀�굸筌욌벡肄∽옙�깇筌욑옙 筌��꼹�궙筌욌��肄좑쭪類μ깂">
+                             <label className="text-gray-500 hover:text-blue-600 cursor-pointer p-1" title="송장 등록">
                                 <Camera className="w-4 h-4"/>
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAdminFileUpload(e, d.id)} />
                              </label>
                           )}
-                          <button onClick={()=>startEditing(d)} className="text-slate-400 p-1">筌≪���긿占쎌궓筌�占썲ㅇ�엨�궓</button>
-                          <button onClick={()=>{if(confirm('筌��닀�굮筌욑옙筌��닀�깓占쎌긿?'))onDeleteDispatch(d.id)}} className="text-slate-400 p-1">筌™뫂�깑占쎌궧占쎌궕筌�占썲ㅇ�엨�궓</button>
+                          <button onClick={()=>startEditing(d)} className="text-slate-400 p-1">✏️</button>
+                          <button onClick={()=>{if(confirm('삭제?'))onDeleteDispatch(d.id)}} className="text-slate-400 p-1">🗑️</button>
                         </>
                       )}
                     </td>
@@ -359,26 +359,26 @@ const DispatchManagementView: React.FC<Props> = ({
                     <div className="flex justify-between items-start mb-3">
                         <div>
                             <div className="flex items-center gap-2 mb-1"><span className="text-xs font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{d.vehicleNo}</span><span className="text-[10px] text-slate-400">{d.date}</span></div>
-                            <h4 className="font-black text-lg">{d.origin} 筌≪���굸占쎌궖 {d.destination}</h4>
+                            <h4 className="font-black text-lg">{d.origin} → {d.destination}</h4>
                             <div className="text-xs text-slate-500 font-bold mt-1">{d.clientName} {d.item && `| ${d.item}`}</div>
                         </div>
-                        <span className={`text-[10px] px-2 py-1 rounded-full font-black ${d.status==='completed'?'bg-green-100 text-green-700':d.status==='sent'?'bg-blue-100 text-blue-700':'bg-slate-100'}`}>{d.status==='pending'?'筌��꼹�궋�뜝�룞�삕筌���ъ�곤쭪占�':d.status==='sent'?'筌��꼷�럮筌욌챷肄∽쭪紐꾠럷筌��늿彛�占쎌궕':'筌��닀�궩占쎌굲筌��꼷彛ο옙�궋'}</span>
+                        <span className={`text-[10px] px-2 py-1 rounded-full font-black ${d.status==='completed'?'bg-green-100 text-green-700':d.status==='sent'?'bg-blue-100 text-blue-700':'bg-slate-100'}`}>{d.status==='pending'?'대기':d.status==='sent'?'배차중':'완료'}</span>
                     </div>
                     <div className="mt-4 pt-4 border-t border-slate-100">
                         {d.status === 'sent' && (
                             <div className="space-y-3">
-                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border"><span className="text-xs font-bold text-slate-500">筌��닀�궆筌욎떝肄∽쭪�떞�궕筌��꼹�깑占쎌궃:</span><input type="number" inputMode="decimal" value={cardQuantities[d.id] || ''} onChange={(e) => setCardQuantities(p => ({ ...p, [d.id]: e.target.value }))} className="flex-1 bg-transparent text-right font-black text-lg text-blue-600 outline-none" placeholder="0.00" /><span className="text-xs font-bold text-slate-500">ton</span></div>
+                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border"><span className="text-xs font-bold text-slate-500">실중량:</span><input type="number" inputMode="decimal" value={cardQuantities[d.id] || ''} onChange={(e) => setCardQuantities(p => ({ ...p, [d.id]: e.target.value }))} className="flex-1 bg-transparent text-right font-black text-lg text-blue-600 outline-none" placeholder="0.00" /><span className="text-xs font-bold text-slate-500">ton</span></div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => { setActiveDispatchId(d.id); setCameraOpen(true); setIsCameraMode(true); setCapturedPhoto(null); setModalQuantity(cardQuantities[d.id]||''); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{alert('筌��늿怡룟ㅇ�뜆肄좑쭪�끋�궞筌��꼹�깂冶⑤삗');setCameraOpen(false);} }} className="bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-sm border border-blue-100">筌™뫂�깑占쎌궙鸚뤄옙 筌��늿怡ワ쭪占쏙㎖�닀�궨占쎌굩</button>
-                                    <button onClick={() => { setActiveDispatchId(d.id); fileInputRef.current?.click(); }} className="bg-slate-50 text-slate-600 py-2.5 rounded-xl font-bold text-sm border border-slate-200">筌™뫂�깑占쎌궙占쎌굩 筌��닀�궥筌욑옙筌��꼷�룉占쎌궞</button>
+                                    <button onClick={() => { setActiveDispatchId(d.id); setCameraOpen(true); setIsCameraMode(true); setCapturedPhoto(null); setModalQuantity(cardQuantities[d.id]||''); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{alert('카메라X');setCameraOpen(false);} }} className="bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-sm border border-blue-100">📷 촬영</button>
+                                    <button onClick={() => { setActiveDispatchId(d.id); fileInputRef.current?.click(); }} className="bg-slate-50 text-slate-600 py-2.5 rounded-xl font-bold text-sm border border-slate-200">📁 앨범</button>
                                 </div>
-                                <button onClick={() => { if(!cardQuantities[d.id]&&!confirm('筌��꼷�럾鸚룸뜆肄잞쭪�눛�궋0?')) return; setActiveDispatchId(d.id); handleFinalSubmit(d.id, cardQuantities[d.id] ? parseFloat(cardQuantities[d.id]) : 0); }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold text-sm">筌��닀�궩占쎌굲筌��꼷彛ο옙�궋 筌��닀�깓占쎌굲筌��닀�굸筌욑옙</button>
+                                <button onClick={() => { if(!cardQuantities[d.id]&&!confirm('무게0?')) return; setActiveDispatchId(d.id); handleFinalSubmit(d.id, cardQuantities[d.id] ? parseFloat(cardQuantities[d.id]) : 0); }} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold text-sm">완료 전송</button>
                             </div>
                         )}
                         {d.status === 'completed' && (
                             <div className="flex flex-col gap-2">
-                                <div className="text-center text-xs font-bold text-green-600 flex items-center justify-center gap-1"><CheckCircle className="w-4 h-4"/> 筌��닀�굸筌욌벡肄∽옙�깇筌욑옙 筌��꼹�궙筌욌��肄좑쭪類μ깂 筌��닀�궩占쎌굲筌��꼷彛ο옙�궋</div>
-                                <button onClick={() => { setActiveDispatchId(d.id); setModalQuantity(cardQuantities[d.id] || ''); setCameraOpen(true); setIsCameraMode(false); }} className="w-full bg-white border border-green-500 text-green-600 py-2.5 rounded-xl font-bold text-sm hover:bg-green-50">筌™뫂�깑占쎌궞占쎌굲 筌��닀�궀占쎌궨筌��닀�깓占쎌궥</button>
+                                <div className="text-center text-xs font-bold text-green-600 flex items-center justify-center gap-1"><CheckCircle className="w-4 h-4"/> 송장 등록 완료</div>
+                                <button onClick={() => { setActiveDispatchId(d.id); setModalQuantity(cardQuantities[d.id] || ''); setCameraOpen(true); setIsCameraMode(false); }} className="w-full bg-white border border-green-500 text-green-600 py-2.5 rounded-xl font-bold text-sm hover:bg-green-50">🔄 수정</button>
                             </div>
                         )}
                     </div>
@@ -389,7 +389,7 @@ const DispatchManagementView: React.FC<Props> = ({
 
       {cameraOpen && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
-           <div className="p-4 flex justify-between items-center text-white"><button onClick={closeCameraModal} className="text-lg font-bold">筌��늿怡�筌욑옙筌��닀�굸占쎌궋</button><span className="font-bold">筌��닀�굸筌욌벡肄∽옙�깇筌욑옙/筌��닀�궀占쎌궨筌��꼹�깑占쎌궃 筌��닀�깇占쎌굷筌��꼹�깓筌욑옙</span><div className="w-10"></div></div>
+           <div className="p-4 flex justify-between items-center text-white"><button onClick={closeCameraModal} className="text-lg font-bold">취소</button><span className="font-bold">송장/수량 입력</span><div className="w-10"></div></div>
            {isCameraMode ? (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center">
                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
@@ -397,19 +397,19 @@ const DispatchManagementView: React.FC<Props> = ({
                </div>
            ) : (
                <div className="flex-1 bg-gray-900 relative flex items-center justify-center overflow-hidden">
-                   {capturedPhoto ? (<img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />) : (<div className="text-white text-center p-4"><p className="text-lg font-bold mb-2">筌��닀�굮筌욑옙筌��늿彛э옙�굲 筌��닀�궧占쎌굸筌��닀�깂占쎌궋</p><p className="text-sm text-gray-400">筌��닀�궀占쎌궨筌��꼹�깑占쎌궃筌��꼷彛э옙�궋 筌��닀�궀占쎌궨筌��닀�깓占쎌궥筌�醫륁궥占쎌궨筌���с룒筌욌챷肄좑옙�굮占쎌궨 筌��닀�굮筌욑옙筌��늿彛э옙�굲筌��닀�깂占쎌굲 筌��늿怡�占쎌궞筌���с럮�뜝�룞�삕筌�醫륁궥占쎌궨筌��닀�굲鸚룸씮肄∽옙�궬占쎌궞.</p></div>)}
-                   {capturedPhoto && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => setRotation(r => r + 90)} className="w-10 h-10 bg-black/50 text-white rounded-full">筌≪���굸鸚뤄옙</button><button onClick={() => setZoomScale(z => z === 1 ? 2 : 1)} className="w-10 h-10 bg-black/50 text-white rounded-full">筌™뫂�깑占쎌궞占쎌궑</button></div>}
+                   {capturedPhoto ? (<img src={capturedPhoto} style={{ transform: `rotate(${rotation}deg) scale(${zoomScale})` }} className="max-w-full max-h-full object-contain" />) : (<div className="text-white text-center p-4"><p className="text-lg font-bold mb-2">사진 없음</p><p className="text-sm text-gray-400">수량만 수정하거나 사진을 추가하세요.</p></div>)}
+                   {capturedPhoto && <div className="absolute top-4 right-4 flex flex-col gap-2"><button onClick={() => setRotation(r => r + 90)} className="w-10 h-10 bg-black/50 text-white rounded-full">↻</button><button onClick={() => setZoomScale(z => z === 1 ? 2 : 1)} className="w-10 h-10 bg-black/50 text-white rounded-full">🔍</button></div>}
                </div>
            )}
            {!isCameraMode && (
                <div className="bg-white p-5 space-y-4 rounded-t-3xl pb-10">
-                   <div className="flex items-center gap-3"><label className="font-bold">筌��닀�궆筌욎떝肄∽쭪�떞�궕筌��꼹�깑占쎌궃:</label><input type="number" inputMode="decimal" autoFocus value={modalQuantity} onChange={e => setModalQuantity(e.target.value)} className="flex-1 border-b-2 border-blue-500 p-2 text-2xl font-black text-blue-600 text-center outline-none" placeholder="0.00" /><span className="font-bold">ton</span></div>
+                   <div className="flex items-center gap-3"><label className="font-bold">실중량:</label><input type="number" inputMode="decimal" autoFocus value={modalQuantity} onChange={e => setModalQuantity(e.target.value)} className="flex-1 border-b-2 border-blue-500 p-2 text-2xl font-black text-blue-600 text-center outline-none" placeholder="0.00" /><span className="font-bold">ton</span></div>
                    <div className="flex gap-2">
-                       <button onClick={() => { setIsCameraMode(true); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{} }} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">筌™뫂�깑占쎌궙鸚뤄옙 筌��닀�깇筌욑옙筌��늿怡ワ쭪占쏙㎖�닀�궨占쎌굩</button>
-                       <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">筌™뫂�깑占쎌궙占쎌굩 筌��닀�궥筌욑옙筌��꼷�룉占쎌궞</button>
+                       <button onClick={() => { setIsCameraMode(true); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{} }} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">📸 재촬영</button>
+                       <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">📁 앨범</button>
                    </div>
                      <button onClick={() => handleFinalSubmit()} disabled={isProcessingAI} className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold text-lg shadow-lg">
-                       {isProcessingAI ? '筌™뫂�깑占쎌궙筌욑옙 NAS + Supabase 筌��닀�깓�뜝�룞�삕筌��닀�깇筌욎뮇肄∽쭪�떞�궕...' : '筌�醫륁궩占쎌궥筌��닀�깂鸚뤄옙 筌��꼷�럮占쎌궓 筌��닀�깓占쎌굲筌��닀�굸筌욑옙'}
+                       {isProcessingAI ? '📤 NAS + Supabase 저장중...' : '확인 및 전송'}
                      </button>
                </div>
            )}
