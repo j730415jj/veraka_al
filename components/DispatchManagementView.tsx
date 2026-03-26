@@ -408,9 +408,9 @@ const DispatchManagementView: React.FC<Props> = ({
                        <button onClick={() => { setIsCameraMode(true); try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(s=>{if(videoRef.current)videoRef.current.srcObject=s});}catch{} }} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">ð¸ ì¬ì´¬ì</button>
                        <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-slate-100 py-3 rounded-xl font-bold text-slate-600">ð ì¨ë²</button>
                    </div>
-                   <button onClick={handleFinalSubmit} disabled={isProcessingAI} className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold text-lg shadow-lg">
+                     <button onClick={() => handleFinalSubmit()} disabled={isProcessingAI} className="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-bold text-lg shadow-lg">
                        {isProcessingAI ? 'ð¤ NAS + Supabase ì ì¥ì¤...' : 'íì¸ ë° ì ì¡'}
-                   </button>
+                     </button>
                </div>
            )}
         </div>
